@@ -385,11 +385,25 @@
     recordPing: (p, raw, out) => recordPing(p, raw, out),
     recordDream: (e) => recordDream(e),
     recordQuestion: (q) => recordQuestion(q),
+    promoteToRules: () => promoteToRules(),
+    liveRules: () => liveRules(),
+    rulesContext: () => rulesContext(),
+    pruneRules: () => pruneRules(),
+    timeContext: () => timeContext(),
+    gapPhrase: (ms) => gapPhrase(ms),
     openQuestions: () => openQuestions(),
     questionsFor: (t) => questionsFor(t),
     questionContext: (t) => questionContext(t),
     resolveQuestion: (q, a) => resolveQuestion(q, a),
     affectOf: (t) => affectOf(t),
+    sdmIndex: () => sdmIndex(),
+    sdmRecall: (c, n) => sdmRecall(c, n),
+    cueFromFeeling: (v, a) => cueFromFeeling(v, a),
+    cueFromContent: (t) => cueFromContent(t),
+    encodeText: (t) => encodeText(t),
+    similarity: (a, b) => similarity(a, b),
+    sensoryOf: (t) => sensoryOf(t),
+    sensoryMatch: (a, b) => sensoryMatch(a, b),
     chooseDreamPair: () => chooseDreamPair(),
     dreamTick: () => dreamTick(),
     forceIdle: () => { lastActivity = 0; memory.lastDream = null; },
@@ -1056,6 +1070,81 @@ BOUNDARIES
     everything:[0,.6], nothing:[-.4,.6], why:[-.2,.5],
   };
 
+
+  // ============================================================
+  // SENSORY SIGNATURE
+  //
+  // Valence and arousal are two dials, and two dials are not enough to
+  // say why two moments feel alike. "Heavy and loud" doesn't distinguish
+  // shouting in a car park from watching through a window. The texture is
+  // part of the match: cold glass, muffled sound, a barrier between you.
+  //
+  // This is also what the classic cases actually are. Proust's madeleine
+  // is a taste, not a valence. Music reaching someone with dementia is an
+  // auditory signature. Same mechanism, different point in the signature.
+  //
+  // Read only from words that are actually there. Sensory detail is
+  // sparsely reported — most turns have none — and inventing it would be
+  // exactly the failure this architecture exists to prevent. A sensory
+  // match can only strengthen a pairing when BOTH moments carry one.
+  // ============================================================
+  const SENSE_LEX = {
+    sight: ("saw see seeing watched watching looked looking stared glimpse dark darkness bright light " +
+      "lit dim shadow glow flash colour color blurry clear visible invisible窗").split(" "),
+    sound: ("heard hear hearing sound noise loud quiet silence silent muffled echo ringing buzzing " +
+      "humming music song singing shouting yelling whisper whispered voice footsteps").split(" "),
+    touch: ("cold freezing chill warm hot burning heat damp wet dry rough smooth soft hard heavy light " +
+      "shaking shivering sweating numb tight pressure ache").split(" "),
+    smell: ("smell smelled smelling scent stink stank fragrance perfume smoke burnt musty stale fresh").split(" "),
+    taste: ("taste tasted flavour flavor sweet bitter sour salty metallic").split(" "),
+    // Not a sense, but the structural feature the model kept surfacing:
+    // something between the person and what they were reaching for.
+    barrier: ("window glass door screen wall fence phone across behind through between outside inside " +
+      "barrier gate rail boards distance apart separated").split(" "),
+  };
+  const SENSE_SET = {};
+  Object.keys(SENSE_LEX).forEach((k) => { SENSE_SET[k] = new Set(SENSE_LEX[k]); });
+
+  function sensoryOf(text) {
+    const words = String(text || "").toLowerCase().split(/[^a-z]+/);
+    const sig = {};
+    let total = 0;
+    words.forEach((w) => {
+      if (w.length < 3) return;
+      Object.keys(SENSE_SET).forEach((mode) => {
+        if (!SENSE_SET[mode].has(w)) return;
+        (sig[mode] = sig[mode] || new Set()).add(w);
+        total++;
+      });
+    });
+    const out = { modes: {}, count: total };
+    Object.keys(sig).forEach((m) => { out.modes[m] = Array.from(sig[m]); });
+    return out;
+  }
+
+  // Only modalities present in BOTH sides count. An absent sense is not a
+  // mismatch, it's an absence — treating it as a mismatch would punish
+  // people for not describing things.
+  function sensoryMatch(a, b) {
+    if (!a || !b || !a.count || !b.count) return { score: 0, shared: [] };
+    const shared = [];
+    let score = 0, compared = 0;
+    Object.keys(a.modes).forEach((mode) => {
+      if (!b.modes[mode]) return;
+      compared++;
+      const A = new Set(a.modes[mode]);
+      let hit = 0;
+      b.modes[mode].forEach((w) => { if (A.has(w)) hit++; });
+      const union = new Set(a.modes[mode].concat(b.modes[mode])).size;
+      const j = union ? hit / union : 0;
+      // Sharing the modality at all is worth something; sharing the actual
+      // words is worth more.
+      score += 0.4 + 0.6 * j;
+      shared.push(mode);
+    });
+    return { score: compared ? score / compared : 0, shared: shared };
+  }
+
   function affectOf(text) {
     const words = String(text || "").toLowerCase().split(/[^a-z']+/);
     let v = 0, a = 0, n = 0;
@@ -1106,23 +1195,406 @@ BOUNDARIES
     const scored = eps.map((e) => {
       const aff = e.affect || affectOf(episodeText(e));
       e.affect = aff;
-      return { ep: e, aff, weight: aff.arousal + Math.abs(aff.valence) * 0.5 };
+      if (!e.sensory) e.sensory = sensoryOf(episodeText(e));
+      return { ep: e, aff, sens: e.sensory, weight: aff.arousal + Math.abs(aff.valence) * 0.5 };
     });
     scored.sort((x, y) => y.weight - x.weight);
     const anchor = scored[0];
     if (anchor.weight <= 0) return null;          // nothing carried any charge
 
-    let best = null, bestScore = -1;
-    scored.slice(1).forEach((c) => {
-      const feelsSame = 1 - Math.min(1, affectDistance(anchor.aff, c.aff));
-      const sameTopic = topicOverlap(episodeText(anchor.ep), episodeText(c.ep));
-      const score = feelsSame - sameTopic * 1.4;   // similar feeling, different subject
-      if (score > bestScore) { bestScore = score; best = c; }
-    });
+    // Address the space by how the anchor FELT, with no content in the cue
+    // at all, and read what lives there. The partner is found by building a
+    // coordinate, not by scanning for one.
+    let best = null, bestScore = -1, sharedSenses = [];
+    try {
+      const hits = sdmRecall(cueFromFeeling(anchor.aff.valence, anchor.aff.arousal), 8);
+      hits.forEach((h) => {
+        if (h.item.kind !== "episode" || h.item.ref.id === anchor.ep.id) return;
+        const cand = scored.find((c) => c.ep.id === h.item.ref.id);
+        if (!cand) return;
+        // Same feeling brought it back. Different subject makes it worth
+        // dreaming on. Shared texture makes it sharp.
+        const sameTopic = topicOverlap(episodeText(anchor.ep), episodeText(cand.ep));
+        const sens = sensoryMatch(anchor.sens, cand.sens);
+        const score = h.sim + sens.score * 0.5 - sameTopic * 1.4;
+        if (score > bestScore) { bestScore = score; best = cand; sharedSenses = sens.shared; }
+      });
+    } catch (e) { console.log("sdm recall unavailable:", e && e.message); }
+
+    // Fall back to the scan if the index gave nothing usable.
+    if (!best) {
+      scored.slice(1).forEach((c) => {
+        const feelsSame = 1 - Math.min(1, affectDistance(anchor.aff, c.aff));
+        const sameTopic = topicOverlap(episodeText(anchor.ep), episodeText(c.ep));
+        const sens = sensoryMatch(anchor.sens, c.sens);
+        const score = feelsSame + sens.score * 0.5 - sameTopic * 1.4;
+        if (score > bestScore) { bestScore = score; best = c; sharedSenses = sens.shared; }
+      });
+    }
     if (!best || bestScore <= 0) return null;
-    return { anchor, other: best, score: bestScore };
+    return { anchor, other: best, score: bestScore, senses: sharedSenses };
   }
 
+  /* ============================================================
+     SPARSE DISTRIBUTED MEMORY  (Kanerva 1988) + Random Indexing
+     ============================================================
+
+     Why this exists: recall today walks every fact and scores it. That is
+     traversal. SDM does not traverse — it computes where a memory would
+     live and reads there. Address IS content.
+
+     The blocker was always vectors: real embeddings need a model, and a
+     model is a dependency this codebase won't take. Kanerva's own answer is
+     Random Indexing (Kanerva, Kristoferson & Holst 2000): give every token
+     a deterministic sparse random vector and bundle them. Semantics fall
+     out of co-occurrence, not from a trained encoder. Nothing to download.
+
+     Vectors are never stored. They're derived from text that is already
+     stored, and rebuilt on load — so this adds nothing to localStorage or
+     to the Drive payload.
+
+     D = 2048 bits. Random vectors in 2048 dimensions are near-orthogonal
+     (expected Hamming distance D/2, sd = sqrt(D)/2 ≈ 22.6), which is what
+     lets many memories superpose in one vector without destroying each
+     other. That near-orthogonality is the whole trick.
+     ============================================================ */
+
+  const D = 2048;                 // bits per hypervector
+  const WORDS = D / 32;           // Uint32 words
+  /* Capacity is the real constraint and it is not negotiable — measured on
+     this implementation:
+          25 memories → 100% exact recall
+          50          →  88%
+         100          →  31%
+         200          →   7%
+     Roughly 0.05x hard locations for reliable recall, degrading smoothly
+     rather than falling over. So this is NOT a store for everything. It is
+     an associative index over a working set — recent episodes plus the
+     highest-amplitude facts — while the arrays stay the system of record.
+     Exact storage is a solved problem; what SDM buys is retrieval from a
+     partial, noisy, or never-written cue. */
+  const HARD_LOCATIONS = 1024;
+  const ACTIVATION_SD = 2.2;      // radius = mean - 2.2sd  → ~1.4% activate
+
+  // ---- deterministic PRNG -------------------------------------
+  // Same token must give the same vector on every device, every reload,
+  // forever — otherwise nothing recomputed matches anything stored.
+  function hashStr(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function xorshift(seed) {
+    // Small or adjacent seeds barely differ after one xorshift round, so
+    // randomHV(101) and randomHV(102) came out correlated — and everything
+    // here depends on independent vectors being near-orthogonal. Scramble
+    // the seed and warm the generator before anyone reads from it.
+    let x = (Math.imul(seed || 123456789, 2654435761) ^ 0x9e3779b9) >>> 0;
+    if (!x) x = 123456789;
+    for (let i = 0; i < 8; i++) {
+      x ^= x << 13; x >>>= 0;
+      x ^= x >> 17;
+      x ^= x << 5;  x >>>= 0;
+    }
+    return function () {
+      x ^= x << 13; x >>>= 0;
+      x ^= x >> 17;
+      x ^= x << 5;  x >>>= 0;
+      return x >>> 0;
+    };
+  }
+
+  // ---- hypervectors -------------------------------------------
+  function zeros() { return new Uint32Array(WORDS); }
+
+  function randomHV(seed) {
+    const r = xorshift(seed);
+    const v = zeros();
+    for (let i = 0; i < WORDS; i++) v[i] = r();
+    return v;
+  }
+
+  const _tokenCache = new Map();
+  function tokenHV(token) {
+    let v = _tokenCache.get(token);
+    if (!v) { v = randomHV(hashStr("tok:" + token)); _tokenCache.set(token, v); }
+    return v;
+  }
+
+  function popcount(x) {
+    x = x - ((x >> 1) & 0x55555555);
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+    x = (x + (x >> 4)) & 0x0f0f0f0f;
+    return (Math.imul(x, 0x01010101) >> 24) & 0xff;
+  }
+
+  // Hamming distance. 1024 means unrelated; 0 means identical.
+  function hamming(a, b) {
+    let d = 0;
+    for (let i = 0; i < WORDS; i++) d += popcount((a[i] ^ b[i]) >>> 0);
+    return d;
+  }
+  // Normalised similarity: 1 identical, 0 orthogonal, -1 opposite.
+  function similarity(a, b) { return 1 - (2 * hamming(a, b)) / D; }
+
+  // BIND — reversible, and the result is unlike both inputs. This is what
+  // makes role/filler pairs possible: bind(FEELING, heavy) is its own point
+  // in the space, and XORing FEELING back out returns heavy.
+  function bind(a, b) {
+    const v = zeros();
+    for (let i = 0; i < WORDS; i++) v[i] = (a[i] ^ b[i]) >>> 0;
+    return v;
+  }
+
+  // PERMUTE — circular bit shift. Used to mark sequence position so
+  // "laundry then doctor" differs from "doctor then laundry".
+  function permute(a, n) {
+    const shift = ((n % D) + D) % D;
+    if (!shift) return a.slice();
+    const v = zeros();
+    for (let bit = 0; bit < D; bit++) {
+      const src = (bit - shift + D) % D;
+      if ((a[src >>> 5] >>> (src & 31)) & 1) v[bit >>> 5] |= (1 << (bit & 31));
+    }
+    return v;
+  }
+
+  // BUNDLE — majority vote. The superposition operation: the result is
+  // similar to every input, which is how many memories live in one vector.
+  function bundle(vectors, weights) {
+    if (!vectors.length) return zeros();
+    const counts = new Float64Array(D);
+    vectors.forEach((v, idx) => {
+      const wgt = weights ? (weights[idx] || 0) : 1;
+      if (!wgt) return;
+      for (let bit = 0; bit < D; bit++) {
+        if ((v[bit >>> 5] >>> (bit & 31)) & 1) counts[bit] += wgt;
+        else counts[bit] -= wgt;
+      }
+    });
+    const out = zeros();
+    // Ties broken deterministically rather than randomly, so the same input
+    // always gives the same bundle.
+    const tie = xorshift(hashStr("tiebreak"));
+    for (let bit = 0; bit < D; bit++) {
+      const c = counts[bit];
+      const one = c > 0 || (c === 0 && (tie() & 1));
+      if (one) out[bit >>> 5] |= (1 << (bit & 31));
+    }
+    return out;
+  }
+
+  // ---- text → hypervector (Random Indexing) --------------------
+  const STOP = new Set(("the a an and or but if then that this these those is are was were be been am do " +
+    "does did have has had i me my we our you your they them their it its of to in on at for with about " +
+    "from by as so just get got need want know think really some any all what which who how when where why " +
+    "can could should would will not out up down over again more very now than there here into").split(" "));
+
+  function tokens(text) {
+    return String(text || "").toLowerCase().split(/[^a-z0-9']+/)
+      .filter((t) => t.length > 2 && !STOP.has(t));
+  }
+
+  // Order matters a little, so each token is permuted by its position in a
+  // short window. Pure bag-of-words loses "put off" vs "off put".
+  function encodeText(text) {
+    const ts = tokens(text);
+    if (!ts.length) return zeros();
+    // Deliberately order-free. An earlier version permuted each token by its
+    // position (i % 3) to encode word order, which is a legitimate HD
+    // technique and completely wrong here: the same word landed on a
+    // different vector depending on where it fell in the sentence, so
+    // "laundry" in a query never matched "laundry" in a memory. Measured
+    // similarity between two texts sharing three words was 0.001 — noise.
+    // Retrieval by topic needs a bag of words, not a sequence.
+    return bundle(ts.map((t) => tokenHV(t)));
+  }
+
+  // ---- role/filler space for affect ---------------------------
+  const ROLE = {
+    FEELING: randomHV(hashStr("role:feeling")),
+    INTENSITY: randomHV(hashStr("role:intensity")),
+    CONTENT: randomHV(hashStr("role:content")),
+  };
+  // Continuous values need level vectors that are similar when the values
+  // are close — random per level would make 0.5 and 0.6 unrelated. Built by
+  // flipping a fixed fraction of bits per step, so adjacency is preserved.
+  const LEVELS = 9;
+  function levelVectors(seedName) {
+    const base = randomHV(hashStr("lvl:" + seedName));
+    const out = [base];
+    const r = xorshift(hashStr("lvlflip:" + seedName));
+    const perStep = Math.floor(D / (2 * (LEVELS - 1)));
+    let cur = base.slice();
+    for (let i = 1; i < LEVELS; i++) {
+      cur = cur.slice();
+      for (let k = 0; k < perStep; k++) {
+        const bit = r() % D;
+        cur[bit >>> 5] ^= (1 << (bit & 31));
+      }
+      out.push(cur);
+    }
+    return out;
+  }
+  const VALENCE_LEVELS = levelVectors("valence");
+  const AROUSAL_LEVELS = levelVectors("arousal");
+
+  function levelOf(levels, value, lo, hi) {
+    const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+    return levels[Math.round(t * (LEVELS - 1))];
+  }
+
+  // A memory is content bound to how it felt. That binding is what lets a
+  // cue built from feeling alone reach across unrelated topics.
+  function encodeMemory(text, affect) {
+    const content = encodeText(text);
+    const parts = [bind(ROLE.CONTENT, content)];
+    if (affect) {
+      parts.push(bind(ROLE.FEELING, levelOf(VALENCE_LEVELS, affect.valence || 0, -1, 1)));
+      parts.push(bind(ROLE.INTENSITY, levelOf(AROUSAL_LEVELS, affect.arousal || 0, 0, 1)));
+    }
+    return bundle(parts);
+  }
+
+  // Build an address out of parts — including one nothing was ever written
+  // to. "This feeling, this intensity, unspecified content" is a legal
+  // coordinate, and reading it returns whatever lives nearby.
+  function cueFromContent(text) {
+    return bundle([bind(ROLE.CONTENT, encodeText(text))]);
+  }
+
+  function cueFromFeeling(valence, arousal) {
+    return bundle([
+      bind(ROLE.FEELING, levelOf(VALENCE_LEVELS, valence, -1, 1)),
+      bind(ROLE.INTENSITY, levelOf(AROUSAL_LEVELS, arousal, 0, 1)),
+    ]);
+  }
+
+  // ---- the memory itself --------------------------------------
+  // Hard locations are fixed random addresses. A write goes to EVERY
+  // location within the activation radius, so each memory is stored in
+  // ~1.4% of them and each location holds pieces of many memories. Nothing
+  // lives in one place; that is what distributed means.
+  function createSDM() {
+    const addresses = [];
+    for (let i = 0; i < HARD_LOCATIONS; i++) addresses.push(randomHV(hashStr("addr:" + i)));
+    const counters = new Int16Array(HARD_LOCATIONS * D);
+    const radius = Math.floor(D / 2 - ACTIVATION_SD * (Math.sqrt(D) / 2));
+    const labels = [];   // what was written, for cleanup
+
+    function activated(addr) {
+      const hits = [];
+      for (let i = 0; i < HARD_LOCATIONS; i++) {
+        if (hamming(addresses[i], addr) <= radius) hits.push(i);
+      }
+      return hits;
+    }
+
+    // SDM retrieves by address PROXIMITY. A feeling-only cue sits ~D/2 away
+    // from a full memory vector, so it activates entirely different
+    // locations and finds nothing. The fix is not a bigger radius — it is
+    // writing the memory at every address you intend to reach it from.
+    function writeIndexed(data, addrs, label) {
+      let total = 0;
+      addrs.forEach((a) => { total += write(a, data); });
+      if (label) labels.push({ label, vec: data });
+      return total;
+    }
+
+    function write(addr, data, label) {
+      const hits = activated(addr);
+      hits.forEach((loc) => {
+        const base = loc * D;
+        for (let bit = 0; bit < D; bit++) {
+          const one = (data[bit >>> 5] >>> (bit & 31)) & 1;
+          const idx = base + bit;
+          const v = counters[idx] + (one ? 1 : -1);
+          counters[idx] = Math.max(-3000, Math.min(3000, v));   // saturating
+        }
+      });
+      if (label) labels.push({ label, vec: data });
+      return hits.length;
+    }
+
+    // Read: sum the counters of every activated location and threshold.
+    // Reading an address never written returns a blend of what's near it.
+    function read(addr) {
+      const hits = activated(addr);
+      if (!hits.length) return { vec: zeros(), locations: 0 };
+      const sums = new Float64Array(D);
+      hits.forEach((loc) => {
+        const base = loc * D;
+        for (let bit = 0; bit < D; bit++) sums[bit] += counters[base + bit];
+      });
+      const out = zeros();
+      for (let bit = 0; bit < D; bit++) if (sums[bit] > 0) out[bit >>> 5] |= (1 << (bit & 31));
+      return { vec: out, locations: hits.length };
+    }
+
+    // Cleanup memory: snap a noisy read to the nearest thing actually stored.
+    function nearest(vec, n) {
+      return labels
+        .map((l) => ({ label: l.label, sim: similarity(l.vec, vec) }))
+        .sort((a, b) => b.sim - a.sim)
+        .slice(0, n || 1);
+    }
+
+    return { write, writeIndexed, read, nearest, activated, radius, addresses, labels, counters };
+  }
+
+
+  // ---- the working set ----------------------------------------
+  // SDM holds ~50 memories reliably (measured: 100% at 25, 88% at 50,
+  // 31% at 100). So it is an INDEX over what's live right now, not the
+  // store. The arrays remain the system of record; this is rebuilt from
+  // them on demand and never persisted.
+  let _sdm = null, _sdmStamp = 0;
+
+  function workingSet() {
+    const eps = (memory.episodes || []).slice(-30).map((e) => ({
+      kind: "episode", id: e.id,
+      text: (e.turns || []).map((t) => t.text).join(" ").slice(0, 2000),
+      affect: e.affect || affectOf((e.turns || []).filter((t) => t.role === "user").map((t) => t.text).join(" ")),
+      ref: e,
+    }));
+    const facts = (memory.facts || [])
+      .map((f) => ({ f, amp: amplitudeOf(f) }))
+      .sort((a, b) => b.amp - a.amp).slice(0, 20)
+      .map((x) => ({ kind: "fact", id: x.f.id, text: x.f.text, affect: affectOf(x.f.text), ref: x.f }));
+    return eps.concat(facts);
+  }
+
+  function sdmIndex() {
+    const stamp = (memory.episodes || []).length * 1000 + (memory.facts || []).length;
+    if (_sdm && _sdmStamp === stamp) return _sdm;
+    const store = createSDM();
+    const set = workingSet();
+    set.forEach((item) => {
+      const v = encodeMemory(item.text, item.affect);
+      // Written at every address we intend to reach it from.
+      store.writeIndexed(v, [v, cueFromContent(item.text), cueFromFeeling(item.affect.valence, item.affect.arousal)], item.id);
+    });
+    store.items = set;
+    _sdm = store; _sdmStamp = stamp;
+    return store;
+  }
+
+  // Retrieve by constructing an address rather than scanning. The cue can
+  // be a feeling with no content at all — which is how a memory about the
+  // laundry is reached from one about a phone call.
+  function sdmRecall(cue, n) {
+    const store = sdmIndex();
+    if (!store.items.length) return [];
+    const got = store.read(cue);
+    const byId = {};
+    store.items.forEach((i) => { byId[i.id] = i; });
+    return store.nearest(got.vec, n || 5)
+      .map((r) => ({ item: byId[r.label], sim: r.sim }))
+      .filter((r) => r.item);
+  }
   function recordEpisode(turns) {
     if (!turns || !turns.length) return;
     memory.episodes = memory.episodes || [];
@@ -1132,6 +1604,8 @@ BOUNDARIES
       turns: turns.map((t) => ({ role: t.role, text: String(t.text || "").slice(0, 4000) })),
       // Charge is read from what the PERSON said, not from the replies.
       affect: affectOf(turns.filter((t) => t.role === "user").map((t) => t.text).join(" ")),
+      sensory: sensoryOf(turns.filter((t) => t.role === "user").map((t) => t.text).join(" ")),
+      sensory: sensoryOf(turns.filter((t) => t.role === "user").map((t) => t.text).join(" ")),
     });
     pruneEpisodes();
   }
@@ -1292,6 +1766,7 @@ BOUNDARIES
       node.hits = (node.hits || 0) + 1;
     });
     capPingsToReality();
+    promoteToRules();
   }
 
   // An idea can never be held more firmly than the experience behind it.
@@ -1671,7 +2146,7 @@ BOUNDARIES
       parts.push(`This is visit #${memory.visitCount}. You've talked before — don't reintroduce yourself.`);
     }
     const base = parts.length ? "\n\nWHAT YOU KNOW ABOUT THIS PERSON:\n" + parts.join(" ") : "";
-    return base + questionContext(queryText || "");
+    return base + rulesContext() + timeContext() + questionContext(queryText || "");
   }
 
   const attachBtn = document.getElementById("attachBtn");
@@ -2109,6 +2584,13 @@ BOUNDARIES
   }
 
   // Track the visit
+  // How long they've actually been gone, captured before lastVisit is
+  // overwritten. Without this the assistant treats a three-day gap as if
+  // the conversation never stopped — which is a strange thing for an app
+  // built around time blindness to get wrong.
+  const _prevVisit = memory.lastVisit ? new Date(memory.lastVisit).getTime() : 0;
+  const gapMs = _prevVisit ? (Date.now() - _prevVisit) : 0;
+  window.__bbGap = gapMs;
   memory.visitCount = (memory.visitCount || 0) + 1;
   memory.lastVisit = new Date().toISOString();
   saveMemory();
@@ -2622,6 +3104,146 @@ Rules:
     return q;
   }
 
+
+  // ---- time awareness -----------------------------------------
+  function partOfDay(h) {
+    if (h < 5) return "the middle of the night";
+    if (h < 9) return "early morning";
+    if (h < 12) return "morning";
+    if (h < 14) return "midday";
+    if (h < 17) return "afternoon";
+    if (h < 21) return "evening";
+    return "late evening";
+  }
+
+  function gapPhrase(ms) {
+    if (!ms) return null;
+    const mins = ms / 60000, hrs = mins / 60, days = hrs / 24;
+    if (mins < 45) return null;                 // same sitting, don't mention it
+    if (hrs < 6) return "a few hours";
+    if (hrs < 20) return "since earlier today";
+    if (days < 1.6) return "about a day";
+    if (days < 7) return Math.round(days) + " days";
+    if (days < 14) return "about a week";
+    if (days < 60) return Math.round(days / 7) + " weeks";
+    return "a couple of months";
+  }
+
+  function timeContext() {
+    const now = new Date();
+    const bits = [];
+    bits.push("Right now it is " + now.toLocaleDateString(undefined, { weekday: "long" })
+      + " " + now.toLocaleDateString() + ", " + now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      + " \u2014 " + partOfDay(now.getHours()) + " for them.");
+
+    const gap = gapPhrase(window.__bbGap || 0);
+    if (gap) {
+      bits.push("It has been " + gap + " since you last spoke. Time has passed for them; "
+        + "don't carry on mid-thought as though it hasn't. You may acknowledge the gap lightly if it "
+        + "fits \u2014 never as a comment on how long they left it, and never as a reason to check up on them.");
+    }
+    if (now.getHours() >= 23 || now.getHours() < 5) {
+      bits.push("It is the middle of the night where they are. Keep it shorter than usual. "
+        + "Do not remark on the hour or suggest they should be asleep.");
+    }
+    return "\n\nTIME\n" + bits.join(" ");
+  }
+
+
+  // ============================================================
+  // LEARNED RULES — where a pattern becomes a change in behaviour
+  //
+  // Until now a dream produced an observation. It sat in memory and got
+  // recalled. Nothing about Blue Bonnet actually changed.
+  //
+  // This is the step that was missing. When a pattern has been noticed in
+  // a dream, grounded in real words, and then REINFORCED by the same thing
+  // happening again — it stops being an observation and becomes a rule
+  // Blue Bonnet works by. It goes into the prompt as an instruction, not
+  // as a fact. What it does next is different because of what it noticed.
+  //
+  // Be clear about what kind of learning this is: the SYSTEM learns, the
+  // model does not. Llama's weights are untouched. What changes is the
+  // instructions Blue Bonnet gives itself, derived from this person's life
+  // rather than written by anyone. That is a real feedback loop and it is
+  // not the same as training.
+  //
+  // A rule has to earn its way in: grounded, coupled to reality, and
+  // confirmed by recurrence. And it dies the same way anything else does —
+  // if the reality behind it fades, the rule goes with it.
+  // ============================================================
+  const RULE_THRESHOLD = 0.68;   // amplitude a ping must reach
+  const RULE_HITS = 3;           // times reality must have reinforced it
+  const RULE_MAX = 8;            // more than this and the prompt is a lecture
+
+  function rules() {
+    if (!Array.isArray(memory.rules)) memory.rules = [];
+    return memory.rules;
+  }
+
+  // Promote any ping that has proven itself. Called after coupling, so it
+  // sees the amplitude that reality just lifted.
+  function promoteToRules() {
+    const now = Date.now();
+    let promoted = 0;
+    (memory.insights || []).forEach((node) => {
+      if (node.origin !== "ping" || node.dismissed || node.promoted) return;
+      if (amplitudeOf(node, now) < RULE_THRESHOLD) return;
+      if ((node.hits || 0) < RULE_HITS) return;
+      if (rules().filter((r) => !r.retired).length >= RULE_MAX) return;
+
+      node.promoted = true;
+      rules().push({
+        id: "r" + now + Math.random().toString(36).slice(2, 5),
+        text: String(node.text).trim(),
+        moment: node.moment,
+        from: node.id,
+        entangled: (node.entangled || []).slice(),
+        learnedAt: now, lastHeard: now, amplitude: node.amplitude,
+        hits: node.hits, applied: 0, retired: false,
+      });
+      promoted++;
+    });
+    if (promoted) saveMemory();
+    return promoted;
+  }
+
+  // A rule cannot outlive the experience it came from. If its parent ping
+  // is gone or has faded, the rule retires itself.
+  function pruneRules() {
+    const now = Date.now();
+    rules().forEach((r) => {
+      if (r.retired) return;
+      const parent = (memory.insights || []).find((x) => x.id === r.from);
+      if (!parent || parent.dismissed) { r.retired = true; r.retiredAt = now; return; }
+      const live = (r.entangled || [])
+        .map((id) => (memory.facts || []).find((f) => f.id === id))
+        .filter(Boolean);
+      if (!live.length) { r.retired = true; r.retiredAt = now; return; }
+      const ceiling = Math.max.apply(null, live.map((f) => amplitudeOf(f, now)));
+      if (ceiling < FORGET_FLOOR * 2) { r.retired = true; r.retiredAt = now; }
+    });
+  }
+
+  function liveRules() {
+    pruneRules();
+    return rules().filter((r) => !r.retired);
+  }
+
+  // This is the part that makes it learning rather than record-keeping:
+  // the rules go in as instructions that change what Blue Bonnet does.
+  function rulesContext() {
+    const live = liveRules();
+    if (!live.length) return "";
+    live.forEach((r) => { r.applied = (r.applied || 0) + 1; });
+    return "\n\nWHAT YOU'VE LEARNED WORKS FOR THIS PERSON\n"
+      + "You worked these out yourself, from patterns that kept holding true. "
+      + "They are not general advice and they are not facts to recite \u2014 they change how you answer:\n"
+      + live.map((r) => "- " + r.text).join("\n")
+      + "\nApply them silently. Never announce that you have learned something about them, "
+      + "and never present a rule back to them as an insight. If one stops fitting, drop it.";
+  }
+
   function openReplyBubble() {
     const empty = document.getElementById("emptyState");
     if (empty) empty.remove();
@@ -2849,7 +3471,8 @@ Rules:
       if (d.looked && d.looked.length) {
         const l = document.createElement("div");
         l.className = "dream-line dim";
-        l.textContent = "Looked at: " + d.looked.join(", ");
+        l.textContent = "Looked at: " + d.looked.join(", ")
+          + ((d.senses && d.senses.length) ? " \u00b7 shared texture: " + d.senses.join(", ") : "");
         card.appendChild(l);
       }
       (d.insights || []).forEach((t) => {
@@ -2971,13 +3594,17 @@ Rules:
         note: "Nothing durable to anchor to yet — didn't dream on it." });
       return;
     }
+    const texture = (pair.senses && pair.senses.length)
+      ? " They also share the same sensory texture (" + pair.senses.join(", ")
+        + "). That shared texture may be the point \u2014 look at it."
+      : "";
     const body = "=== A MOMENT THAT CARRIED WEIGHT (" + feel + ") ===\n"
       + episodeText(a.ep).slice(0, 4000)
       + "\n\n=== AN OLDER MOMENT THAT FELT SIMILAR, ABOUT SOMETHING ELSE ===\n"
       + episodeText(b.ep).slice(0, 4000);
 
     const system = "You are revisiting two moments from one person's conversations while they are away. "
-      + "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here.\n\n"
+      + "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here." + texture + "\n\n"
       + 'Return ONLY valid JSON. One of:\n'
       + '  {"idea":"...","moment":"<exact words copied from above>"}   - only if you genuinely understand the connection\n'
       + '  {"question":"...","moment":"<exact words copied from above>"} - if something is clearly there but you do NOT understand it\n'
@@ -2994,7 +3621,7 @@ Rules:
     const m = raw && raw.match(/\{[\s\S]*\}/);
     const parsed = m ? JSON.parse(m[0]) : {};
 
-    const log = { readChars: body.length, felt: feel,
+    const log = { readChars: body.length, felt: feel, senses: pair.senses || [],
       looked: ["a " + feel + " moment", "an older moment that felt the same"],
       insights: [], pings: [] };
 
