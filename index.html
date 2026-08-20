@@ -204,6 +204,17 @@
     line-height: 1.5; white-space: pre-wrap; }
   .row.user .bubble { background: var(--panel2); border: 1px solid var(--border); }
   .row.assistant .bubble { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); }
+  .retry-bubble { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .retry-line { white-space: pre-wrap; }
+  .retry-btn { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--text); cursor: pointer; display: flex;
+    align-items: center; justify-content: center; transition: transform .15s ease, background .15s ease; }
+  .retry-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .retry-btn:active { transform: rotate(-90deg); }
+  .retry-details { font-size: 12px; color: var(--muted); }
+  .retry-details summary { cursor: pointer; }
+  .retry-detail-text { margin-top: 6px; white-space: pre-wrap; word-break: break-word;
+    font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.45; }
   #inputRow { display: flex; align-items: center; gap: 10px; padding: 14px 18px;
     border-top: 1px solid var(--border); background: var(--panel); flex-shrink: 0; }
   #inputWrap { max-width: 720px; width: 100%; margin: 0 auto; display: flex; gap: 10px; }
@@ -382,6 +393,10 @@
     pushMessage: (m) => messages.push(m),
     clearMessages: () => { messages.length = 0; },
     saveCurrentChat: () => saveCurrentChat(),
+    sendMessage: (t) => sendMessage(t),
+    getMessages: () => messages,
+    renderRetry: (h, d) => renderRetry(h, d),
+    retryLast: () => retryLast(),
     recordPing: (p, raw, out) => recordPing(p, raw, out),
     recordDream: (e) => recordDream(e),
     recordQuestion: (q) => recordQuestion(q),
@@ -3459,6 +3474,74 @@ Rules:
   })();
 
   // Pick up where they left off rather than opening on a blank page.
+  // ============================================================
+  // ONE-TIME IMPORT FROM THE MAIN STORE
+  //
+  // Both repos are served from the same github.io origin, so they share one
+  // localStorage. They are kept apart by key: the main app writes
+  // "bluebonnet-memory-v1" and the beta writes "bluebonnet-memory-beta".
+  //
+  // That separation is right, and it has one sharp edge: if the main build
+  // was ever served at the beta URL by mistake, everything typed there went
+  // into the main store, and the beta then opens looking empty.
+  //
+  // So: if the beta has nothing and the main store has something, offer to
+  // copy it across. COPY, never move \u2014 the main store is not touched, so
+  // this cannot damage the live app's memory even if pressed by accident.
+  // ============================================================
+  (function offerImport() {
+    try {
+      const mine = (memory.chats || []).length + (memory.facts || []).length;
+      if (mine > 0) return;                       // beta already has its own
+      const other = localStorage.getItem("bluebonnet-memory-v1");
+      if (!other) return;
+      const parsed = JSON.parse(other);
+      const count = (parsed.chats || []).length;
+      if (!count) return;
+
+      const row = document.createElement("div");
+      row.className = "row assistant";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble retry-bubble";
+      row.appendChild(bubble);
+
+      const line = document.createElement("div");
+      line.className = "retry-line";
+      line.textContent = "There " + (count === 1 ? "is 1 conversation" : "are " + count + " conversations")
+        + " saved under the main app on this device. Want to copy them into the beta? "
+        + "The main app keeps its own copy either way.";
+      bubble.appendChild(line);
+
+      const btn = document.createElement("button");
+      btn.className = "retry-btn";
+      btn.type = "button";
+      btn.style.width = "auto";
+      btn.style.borderRadius = "10px";
+      btn.style.padding = "0 16px";
+      btn.textContent = "Copy them over";
+      btn.addEventListener("click", () => {
+        try {
+          memory.chats = (parsed.chats || []).slice();
+          memory.facts = (parsed.facts || []).slice();
+          memory.episodes = (parsed.episodes || []).slice();
+          memory.insights = (parsed.insights || []).slice();
+          memory.questions = (parsed.questions || []).slice();
+          memory.currentChatId = null;
+          saveMemory();
+          row.remove();
+          render("assistant", "Copied. Your conversations are in the chats panel.");
+          if (typeof renderChats === "function") renderChats();
+        } catch (e) {
+          row.remove();
+          render("assistant", "That didn't copy across. Nothing was changed or lost \u2014 "
+            + "the originals are still in the main app.");
+        }
+      });
+      bubble.appendChild(btn);
+      bodyEl.appendChild(row);
+    } catch (e) { /* never let this block the app starting */ }
+  })();
+
   (function resumeLastChat() {
     const c = currentChat();
     if (c && c.msgs && c.msgs.length) {
@@ -3707,6 +3790,81 @@ Rules:
     else markAwake();
   });
 
+  // ============================================================
+  // RETRY
+  //
+  // When a call fails the person has already said their piece. Making them
+  // read an explanation and retype it is the worst possible response. So:
+  // a short line, a circle to press, and their words go back in unchanged.
+  //
+  // Details are kept but folded away. Someone debugging can open them;
+  // someone who just wants to carry on never has to look.
+  // ============================================================
+  let lastSent = null;
+
+  function renderRetry(headline, details, err) {
+    const empty = document.getElementById("emptyState");
+    if (empty) empty.remove();
+    const row = document.createElement("div");
+    row.className = "row assistant";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble retry-bubble";
+    row.appendChild(bubble);
+
+    const line = document.createElement("div");
+    line.className = "retry-line";
+    line.textContent = headline;
+    bubble.appendChild(line);
+
+    const btn = document.createElement("button");
+    btn.className = "retry-btn";
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Try again");
+    btn.title = "Try again";
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">'
+      + '<path d="M21 12a9 9 0 1 1-2.64-6.36" fill="none" stroke="currentColor" '
+      + 'stroke-width="2" stroke-linecap="round"/>'
+      + '<path d="M21 3v6h-6" fill="none" stroke="currentColor" stroke-width="2" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    btn.addEventListener("click", () => {
+      if (loading) return;
+      row.remove();
+      retryLast();
+    });
+    bubble.appendChild(btn);
+
+    if (details) {
+      const more = document.createElement("details");
+      more.className = "retry-details";
+      const sum = document.createElement("summary");
+      sum.textContent = "What happened";
+      more.appendChild(sum);
+      const pre = document.createElement("div");
+      pre.className = "retry-detail-text";
+      pre.textContent = details;
+      more.appendChild(pre);
+      bubble.appendChild(more);
+    }
+
+    bodyEl.appendChild(row);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  }
+
+  // Put the last message back through unchanged. It is still on screen and
+  // still in `messages`, so it is popped off first to avoid sending it twice.
+  function retryLast() {
+    if (!lastSent) return;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { messages.splice(i, 1); break; }
+    }
+    const rows = bodyEl.querySelectorAll(".row.user");
+    if (rows.length) rows[rows.length - 1].remove();
+    const again = lastSent;
+    lastSent = null;
+    attached = again.attachment || null;
+    sendMessage(again.text);
+  }
+
   async function sendMessage(preset) {
     const raw = (preset !== undefined ? preset : inputEl.value).trim();
     if ((!raw && !attached) || loading) return;
@@ -3719,6 +3877,7 @@ Rules:
     attached = null;
     renderAttachPreview();
     render("user", content, sentAttachment);
+    lastSent = { text: content, attachment: sentAttachment };
 
     if (sentAttachment) {
       const block = sentAttachment.kind === "pdf"
@@ -3835,11 +3994,10 @@ Rules:
         headline = "My API key isn't being accepted. That's a setup problem on my side.";
       }
 
-      const why = headline + "\n\n"
-        + "If you're stuck and waiting on me: pick the one thing with a deadline, "
-        + "and do the smallest first step of it. That works whether I answer or not.\n\n"
-        + "Details: " + plain + extra;
-      render("assistant", why);
+      // A wall of text about billing is the wrong thing to hand someone who
+      // was mid-thought. One line, and a button that takes their last message
+      // and tries it again \u2014 nothing to retype, nothing to read.
+      renderRetry(headline, plain + extra, e);
       console.error("Blue Bonnet error:", e);
     } finally {
       setLoading(false);
