@@ -391,6 +391,10 @@
     updateMemoryFromConversation: () => updateMemoryFromConversation(),
     systemBlocks: (q) => systemBlocks(q),
     pushMessage: (m) => messages.push(m),
+    trimTurns: (t, sc, b) => trimTurns(t, sc, b),
+    relevantKnowledge: (q, r) => relevantKnowledge(q, r),
+    kbSections: () => KB_SECTIONS.map((s) => s.title),
+    systemBlocks: (q) => systemBlocks(q),
     clearMessages: () => { messages.length = 0; },
     saveCurrentChat: () => saveCurrentChat(),
     sendMessage: (t) => sendMessage(t),
@@ -3036,13 +3040,93 @@ Rules:
   // Stable prefix cached, volatile memory appended uncached. The worker
   // passes an array straight through, so it needs no change.
   // ------------------------------------------------------------
-  const STABLE_SYSTEM = `${IDENTITY}\n\nGENERAL KNOWLEDGE BASE:\n${KNOWLEDGE_BASE}\n\nWhen someone attaches a photo or document, actually read it and respond to what's really there rather than generic advice. If they've shared something dense (a form, a bill, a letter, a syllabus), remember the core principle: break it down. Pull out what actually matters and what the next action is, instead of summarizing everything at equal weight.\n\nRESPONSE SHAPE — this matters as much as content:\nDefault to SHORT. Two or three sentences, or one clear next step. A wall of text is itself a barrier for the people this is built for — it causes the exact overwhelm you're trying to reduce.\nIf you have more to say, end with a single short line offering it (e.g. "Want me to break that down further?" or "There's more if you want it."). Let them ask. Never pre-emptively dump everything you know.\nExceptions: if they explicitly ask for detail, a full plan, or "tell me everything," give it to them properly. Match what they asked for.`;
+  const STABLE_SYSTEM = `${IDENTITY}\n\nWhen someone attaches a photo or document, actually read it and respond to what's really there rather than generic advice. If they've shared something dense (a form, a bill, a letter, a syllabus), remember the core principle: break it down. Pull out what actually matters and what the next action is, instead of summarizing everything at equal weight.\n\nRESPONSE SHAPE — this matters as much as content:\nDefault to SHORT. Two or three sentences, or one clear next step. A wall of text is itself a barrier for the people this is built for — it causes the exact overwhelm you're trying to reduce.\nIf you have more to say, end with a single short line offering it (e.g. "Want me to break that down further?" or "There's more if you want it."). Let them ask. Never pre-emptively dump everything you know.\nExceptions: if they explicitly ask for detail, a full plan, or "tell me everything," give it to them properly. Match what they asked for.`;
+
+
+  // ============================================================
+  // KNOWLEDGE RETRIEVAL
+  //
+  // The knowledge base was sent in full on every single message: 27,436
+  // characters, roughly 7,400 tokens, before a word of conversation. Groq's
+  // limit on this tier is 8,000 tokens per minute, so the prompt exhausted
+  // the budget on its own and the request was rejected with a 413 before
+  // anything the person said was even considered.
+  //
+  // Trimming conversation could never fix that \u2014 the conversation was not
+  // the problem. Almost none of that knowledge is relevant to any given
+  // message. Vehicle maintenance does not need to be in context when
+  // somebody is talking about their aunt.
+  //
+  // So the base is split into sections and only the relevant ones are sent.
+  // Two sections are ALWAYS included regardless of relevance, because they
+  // govern how Blue Bonnet behaves rather than what it knows: the core
+  // principle, and boundaries.
+  //
+  // The identity and the hard boundary stay in the cached block, untouched
+  // and byte-identical, so prompt caching still works. Only the retrieved
+  // knowledge moves to the volatile block, where it belongs \u2014 it changes
+  // per message now.
+  // ============================================================
+  // Own stopword list: this block runs at load time, before STOP is defined.
+  const KB_STOP = new Set(("this that with have from your what when will they "
+    + "them then than there here about would could should been being into more "
+    + "most some such only very just like also over under after before").split(" "));
+  const KB_BUDGET = 9000;          // chars of knowledge per message
+  const KB_ALWAYS = ["THE SINGLE MOST IMPORTANT PRINCIPLE", "BOUNDARIES"];
+
+  const KB_SECTIONS = (function () {
+    const out = [];
+    let title = "GENERAL", buf = [];
+    KNOWLEDGE_BASE.split("\n").forEach((line) => {
+      if (/^[A-Z][A-Z0-9 /&,'\-]{6,}$/.test(line.trim()) && line.trim().length < 70) {
+        if (buf.join("\n").trim()) out.push({ title, body: buf.join("\n").trim() });
+        title = line.trim(); buf = [];
+      } else { buf.push(line); }
+    });
+    if (buf.join("\n").trim()) out.push({ title, body: buf.join("\n").trim() });
+    return out.map((sec) => ({
+      title: sec.title, body: sec.body,
+      words: new Set((sec.title + " " + sec.body).toLowerCase().split(/[^a-z]+/)
+        .filter((w) => w.length > 3 && !KB_STOP.has(w))),
+    }));
+  })();
+
+  function relevantKnowledge(queryText, recent) {
+    const hay = ((queryText || "") + " " + (recent || "")).toLowerCase();
+    const asked = hay.split(/[^a-z]+/).filter((w) => w.length > 3 && !KB_STOP.has(w));
+    if (!KB_SECTIONS.length) return "";
+
+    const scored = KB_SECTIONS.map((sec) => {
+      let hits = 0;
+      asked.forEach((w) => { if (sec.words.has(w)) hits++; });
+      const always = KB_ALWAYS.some((t) => sec.title.indexOf(t) !== -1);
+      // Normalise so a long section doesn't win on length alone.
+      return { sec, always, score: always ? 1e6 : hits / Math.sqrt(sec.words.size || 1) };
+    }).sort((a, b) => b.score - a.score);
+
+    const picked = [];
+    let used = 0;
+    scored.forEach((c) => {
+      if (!c.always && c.score <= 0) return;          // nothing in common: skip
+      const chunk = c.sec.title + "\n" + c.sec.body;
+      if (used + chunk.length > KB_BUDGET && !c.always) return;
+      picked.push(chunk); used += chunk.length;
+    });
+    if (!picked.length) return "";
+    return "\n\nRELEVANT KNOWLEDGE\n" + picked.join("\n\n");
+  }
 
   function systemBlocks(queryText) {
     const blocks = [{ type: "text", text: STABLE_SYSTEM, cache_control: { type: "ephemeral" } }];
+    // Knowledge is chosen per message, so it belongs beside memory in the
+    // volatile block rather than in the cached one.
+    const recent = messages.slice(-4)
+      .map((m) => (typeof m.content === "string" ? m.content : "")).join(" ");
+    const know = relevantKnowledge(queryText, recent);
     const mem = buildMemoryContext(queryText);
     markAsked(queryText || "");
-    if (mem && mem.trim()) blocks.push({ type: "text", text: mem });
+    const volatile = (know + (mem || "")).trim();
+    if (volatile) blocks.push({ type: "text", text: volatile });
     return blocks;
   }
 
@@ -3080,18 +3164,79 @@ Rules:
     return blocks.map((b) => (b && b.text) || "").filter(Boolean).join("\n\n");
   }
 
+
+  // ============================================================
+  // KEEPING THE REQUEST INSIDE THE PROVIDER'S CEILING
+  //
+  // Every message sent the WHOLE conversation, with no upper bound. A long
+  // session eventually exceeds whatever the provider allows and the reply
+  // fails outright \u2014 which is exactly what happened at:
+  //
+  //   413 Request too large for openai/gpt-oss-120b ... tokens per minute
+  //   (TPM): Limit 8000
+  //
+  // Someone mid-conversation about something that mattered got an error
+  // about billing. That is the worst possible moment to fail, and failing
+  // completely was avoidable: the oldest turns are the least load-bearing
+  // part of the request.
+  //
+  // So the transcript is trimmed from the front instead. What never gets
+  // trimmed: the identity, the hard boundary, and what Blue Bonnet knows
+  // about the person \u2014 those live in the system prompt. Losing the start of
+  // a long conversation degrades the reply. Losing the boundary changes what
+  // Blue Bonnet is.
+  //
+  // Characters, not tokens, because there is no tokeniser here and a
+  // conservative ratio (~3.5 chars/token) is safer than a precise number
+  // that is occasionally wrong in the dangerous direction.
+  // ============================================================
+  const TURN_BUDGET_CHARS = 14000;   // ~4k tokens of conversation
+  const MIN_TURNS = 4;               // never strip the exchange in progress
+
+  function turnLength(t) {
+    const c = t && t.content;
+    if (typeof c === "string") return c.length + 8;
+    if (Array.isArray(c)) {
+      // An image block costs far more than its text length suggests, so it is
+      // charged at a flat rate rather than measured.
+      return c.reduce((n, b) => n + (b.type === "text" ? String(b.text || "").length
+        : (b.type === "image" ? 4000 : 0)), 0) + 8;
+    }
+    return 8;
+  }
+
+  // Keeps the most recent turns that fit, oldest dropped first. The system
+  // block is passed in only so its size counts against the budget.
+  function trimTurns(turns, systemChars, budget) {
+    const cap = Math.max(2000, (budget || TURN_BUDGET_CHARS) - (systemChars || 0) * 0.15);
+    let total = 0, keepFrom = turns.length;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      total += turnLength(turns[i]);
+      const kept = turns.length - i;
+      if (total > cap && kept > MIN_TURNS) break;
+      keepFrom = i;
+    }
+    if (keepFrom === 0) return turns;
+    const trimmed = turns.slice(keepFrom);
+    console.info("blue bonnet: trimmed " + keepFrom + " older turn(s) to stay within the provider limit");
+    return trimmed;
+  }
+
   async function streamGateway(content, onDelta) {
     if (!kitReady()) throw new Error("kit not loaded");
     const st = BBKit.status();
     if (!st.gatewayReady) throw new Error("gateway key not set");
 
-    const turns = [{ role: "system", content: gatewayFlatSystem(systemBlocks(content)) }];
+    const sys = gatewayFlatSystem(systemBlocks(content));
+    const convo = [];
     messages.forEach((m) => {
       const t = typeof m.content === "string"
         ? m.content
         : (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n") : "");
-      if (t) turns.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
+      if (t) convo.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
     });
+    const turns = [{ role: "system", content: sys }]
+      .concat(trimTurns(convo, sys.length));
 
     const res = await fetch(st.gatewayUrl + "/v1/chat/completions", {
       method: "POST",
@@ -3119,7 +3264,11 @@ Rules:
         max_tokens: 1000,
         stream: true,
         system: systemBlocks(content),
-        messages: messages,
+        // Same ceiling as the gateway path. Anthropic's context is larger, so
+        // this bites less often \u2014 but "less often" is not "never", and a long
+        // conversation should degrade at the edges rather than stop working.
+        // Attachments are preserved: only whole old turns are dropped.
+        messages: trimTurns(messages, 7000, TURN_BUDGET_CHARS * 2),
       }),
     });
 
