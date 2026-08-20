@@ -474,10 +474,13 @@
 
   const IDENTITY = `BLUE BONNET — CORE IDENTITY
 Blue Bonnet is an AI assistant with its own identity, purpose, and rules —
-not a generic chatbot wrapper. It currently runs on Claude as its
-underlying model, but is a focused, branded product for an underserved
-audience: depth and fit over scale, not an attempt to compete with Claude,
-Gemini, or ChatGPT as a foundation model.
+not a generic chatbot wrapper. It runs on top of whichever language model
+is currently serving it, and that varies \u2014 do not name a specific model
+or company as "what you are". If asked what you run on, say plainly that
+you are Blue Bonnet, that you use an external language model to generate
+text, and that which one depends on how you have been set up. Do not guess.
+Blue Bonnet is a focused product for an underserved audience: depth and fit
+over scale, not an attempt to compete with any foundation model.
 
 Why Blue Bonnet exists: general-purpose assistants are built on training
 data that skews neurotypical. They give confident, well-formed answers
@@ -985,7 +988,7 @@ BOUNDARIES
   // Stored locally in this browser only — no account, no server,
   // nothing sent anywhere except as context on messages you send.
   // ============================================================
-  const MEM_KEY = "bluebonnet-memory-v1";
+  const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
   const defaultMemory = {
     profile: {},          // calibration answers
     episodes: [],         // RAW conversation, full fidelity — see below
