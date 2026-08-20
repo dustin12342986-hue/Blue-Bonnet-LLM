@@ -278,3 +278,103 @@ The ranking is close to inverted. Two candidate causes, neither confirmed:
    largely against content noise.
 
 Not yet isolated. Written down rather than quietly passed.
+
+
+---
+
+# Two accounts of how memories bind
+
+The system now implements **two competing mechanisms** for what makes two
+memories pair, and can be switched between them:
+
+```js
+BlueBonnet.setPairingMode("affect");   // Mode A — the default
+BlueBonnet.setPairingMode("texture");  // Mode B
+```
+
+**Mode A — feeling gates.** Two moments must feel alike before they can pair;
+shared sensory texture then strengthens the pairing. Texture is a tiebreaker.
+
+**Mode B — texture fires.** A distinctive sensory configuration shared across
+two unrelated events is what makes them fire together, and the feeling and the
+connection are what the firing *produces*. There is no affect gate at all.
+
+Mode B is the **déjà vu** account. Déjà vu is a familiarity signal with no
+retrievable memory behind it: enough of a scene's configuration matches
+something stored that recognition fires, while the source never surfaces. The
+feeling arrives first and the explanation never does. Under Mode A that is
+impossible — with no affect match, nothing pairs.
+
+## Inverse-frequency weighting
+
+Déjà vu is **rare**. It does not fire in every room with a window. What fires
+it is a *distinctive* configuration, not a common feature. So shared texture is
+weighted by inverse frequency:
+
+```
+rarity(word) = log(total_episodes / episodes_containing_word)
+```
+
+Measured, with "window" present in six of eight episodes and "burnt" in two:
+
+| Word | Episodes | Rarity |
+|---|---:|---:|
+| window | 6 of 8 | **0.18** |
+| burnt | 2 of 8 | **1.39** |
+
+The system fires on the burnt-kitchen pair and ignores all six window moments.
+Two mundane window episodes alone produce no pair at all. Below
+`DISTINCT_FLOOR` (0.9) the shared texture is ordinary and nothing fires.
+
+## The modes provably disagree
+
+Given the same four episodes — two emotionally charged about different
+subjects, two flat ones sharing "cold glass, muffled, behind the boards" —
+Mode A selects the charged pair and Mode B selects the configuration pair.
+That difference is the experiment, running.
+
+## Mode B is told to assume coincidence
+
+The two modes hand the model genuinely different things, so they are described
+differently. Mode B's prompt states that nothing linked the two moments except
+an unusual configuration — not the subject, not the feeling — and that it
+should **assume coincidence unless the words themselves show otherwise**. It is
+explicitly told *not* to start from the feeling, since there may not be a
+shared one.
+
+Describing Mode B's pairs the way Mode A's are described would invite the model
+to invent the significance, which is the exact failure the architecture exists
+to prevent.
+
+## The predicted failure mode
+
+Déjà vu is a **false positive** — familiarity with nothing retrievable behind
+it. Mode B will therefore produce connections that feel significant and mean
+nothing, at some measurable rate. This is expected, not a defect.
+
+Every dream now records which mode produced it and the specific shared words,
+so two rates can be computed separately:
+
+- **false familiarity** — surfaced, felt meaningful, grounded in nothing
+- **novel and meaningful** — surfaced, not previously noticed, and real
+
+Reporting both is a stronger result than either alone.
+
+## For the paper
+
+Mode A vs Mode B is a third arm on the λ sweep: same participants, same novelty
+metric, same memory store. It turns the paper from "here is my method" into
+"here are two competing mechanisms, tested against each other."
+
+## Known: a test encodes the disagreement
+
+`test-sensory.mjs` asserts that a flat episode with matching texture is never
+selected. That is true in Mode A and **false by design** in Mode B. It passes
+because the suite runs in the default mode. Left in place deliberately, and
+noted here, because a green suite should not hide a design question.
+
+## Suites
+
+```
+memory 24 · sensory 16 · rules 17 · questions 20 · modes 15 · sdm 19
+```

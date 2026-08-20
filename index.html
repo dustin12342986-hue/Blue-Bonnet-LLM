@@ -420,6 +420,11 @@
     sensoryOf: (t) => sensoryOf(t),
     sensoryMatch: (a, b) => sensoryMatch(a, b),
     chooseDreamPair: () => chooseDreamPair(),
+    chooseTexturePair: () => chooseTexturePair(),
+    choosePair: () => choosePair(),
+    pairingMode: () => pairingMode(),
+    setPairingMode: (m) => setPairingMode(m),
+    textureRarity: (eps) => textureRarity(eps || memory.episodes || []),
     dreamTick: () => dreamTick(),
     forceIdle: () => { lastActivity = 0; memory.lastDream = null; },
     renderDreams: () => renderDreams(),
@@ -1003,7 +1008,7 @@ BOUNDARIES
   // Stored locally in this browser only — no account, no server,
   // nothing sent anywhere except as context on messages you send.
   // ============================================================
-  const MEM_KEY = "bluebonnet-memory-v1";
+  const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
   const defaultMemory = {
     profile: {},          // calibration answers
     episodes: [],         // RAW conversation, full fidelity — see below
@@ -1207,6 +1212,87 @@ BOUNDARIES
   // Pick what to dream about: one episode that carried weight, and a distant
   // one that FEELS like it but isn't about the same thing. That pairing is
   // the whole point — topic-similar pairs tell you what you already know.
+
+  // ============================================================
+  // PAIRING MODE — two competing accounts of how memories bind
+  //
+  // MODE A ("affect"): feeling gates. Two moments must feel alike before
+  // they can pair; shared texture then strengthens the pairing. This is
+  // what was built first, and it treats texture as a tiebreaker.
+  //
+  // MODE B ("texture"): texture fires. A distinctive sensory configuration
+  // shared across two unrelated events is what makes them fire together,
+  // and the feeling and the connection are what the firing PRODUCES.
+  //
+  // Mode B is the déjà vu account. Déjà vu is a familiarity signal with no
+  // retrievable memory behind it: enough of a scene's configuration matches
+  // something stored that recognition fires, while the source never
+  // surfaces. The feeling arrives first and the explanation never does.
+  // Under Mode A that is impossible \u2014 with no affect match, nothing pairs.
+  //
+  // Déjà vu also supplies the piece Mode B needs. It is RARE. It does not
+  // fire in every room with a window. What fires it is a distinctive
+  // configuration, not a common feature \u2014 so texture is weighted by
+  // inverse frequency. "Cold glass, a barrier, muffled sound" is a
+  // signature. "It was daytime" is not.
+  //
+  // And Mode B predicts its own failure: it will produce connections that
+  // feel significant and mean nothing, exactly as déjà vu does. That rate
+  // is worth measuring rather than hiding \u2014 the grounding check and the
+  // dream journal already exist to survive it.
+  //
+  // Both modes ship. Which one is right is a question for data, not for
+  // argument, so it is a setting rather than a rewrite.
+  // ============================================================
+  const PAIRING_MODES = ["affect", "texture"];
+  function pairingMode() {
+    return PAIRING_MODES.indexOf(memory.pairingMode) !== -1 ? memory.pairingMode : "affect";
+  }
+  function setPairingMode(m) {
+    if (PAIRING_MODES.indexOf(m) === -1) return pairingMode();
+    memory.pairingMode = m;
+    saveMemory();
+    return m;
+  }
+
+  // How rare is each sensory word across everything we hold? A word in
+  // almost every episode carries no signal; one in two episodes carries a
+  // lot. This is what keeps Mode B from firing on "it was daytime".
+  function textureRarity(eps) {
+    const seen = {}, total = Math.max(1, eps.length);
+    eps.forEach((e) => {
+      const sig = e.sensory || sensoryOf(episodeText(e));
+      const words = {};
+      Object.keys(sig.modes || {}).forEach((m) => {
+        (sig.modes[m] || []).forEach((w) => { words[m + ":" + w] = 1; });
+      });
+      Object.keys(words).forEach((k) => { seen[k] = (seen[k] || 0) + 1; });
+    });
+    return function rarity(key) {
+      const n = seen[key] || 0;
+      if (n <= 1) return 0;                  // unique to one episode: nothing shared
+      return Math.log(total / n);            // shared by few = high, by many = ~0
+    };
+  }
+
+  // Distinctiveness of what two moments share, not merely how much.
+  function distinctiveMatch(a, b, rarity) {
+    if (!a || !b || !a.count || !b.count) return { score: 0, shared: [], words: [] };
+    let score = 0; const shared = [], words = [];
+    Object.keys(a.modes || {}).forEach((mode) => {
+      if (!(b.modes || {})[mode]) return;
+      const B = new Set(b.modes[mode]);
+      let hit = false;
+      (a.modes[mode] || []).forEach((w) => {
+        if (!B.has(w)) return;
+        const r = rarity(mode + ":" + w);
+        if (r > 0) { score += r; words.push(w); hit = true; }
+      });
+      if (hit) shared.push(mode);
+    });
+    return { score, shared, words };
+  }
+
   function chooseDreamPair() {
     const eps = (memory.episodes || []).filter((e) => (e.turns || []).length);
     if (eps.length < 2) return null;
@@ -1250,7 +1336,52 @@ BOUNDARIES
       });
     }
     if (!best || bestScore <= 0) return null;
-    return { anchor, other: best, score: bestScore, senses: sharedSenses };
+    return { anchor, other: best, score: bestScore, senses: sharedSenses, mode: "affect" };
+  }
+
+  // MODE B. No affect gate. Find the two episodes sharing the most
+  // distinctive sensory configuration, on different subjects, and let
+  // whatever feeling exists be the product rather than the precondition.
+  //
+  // DISTINCT_FLOOR is what makes this rare. Below it, the shared texture is
+  // ordinary and no firing happens \u2014 which is why déjà vu is not constant.
+  const DISTINCT_FLOOR = 0.9;
+
+  function chooseTexturePair() {
+    const eps = (memory.episodes || []).filter((e) => (e.turns || []).length);
+    if (eps.length < 2) return null;
+    eps.forEach((e) => {
+      if (!e.sensory) e.sensory = sensoryOf(episodeText(e));
+      if (!e.affect) e.affect = affectOf(episodeText(e));
+    });
+    const rarity = textureRarity(eps);
+
+    let best = null, bestScore = 0, bestShared = [], bestWords = [];
+    for (let i = 0; i < eps.length; i++) {
+      for (let j = i + 1; j < eps.length; j++) {
+        const m = distinctiveMatch(eps[i].sensory, eps[j].sensory, rarity);
+        if (m.score < DISTINCT_FLOOR) continue;           // ordinary texture: no fire
+        // Different subjects is still the point \u2014 that principle does not
+        // change between modes.
+        const sameTopic = topicOverlap(episodeText(eps[i]), episodeText(eps[j]));
+        const score = m.score - sameTopic * 1.4;
+        if (score > bestScore) {
+          bestScore = score; best = [eps[i], eps[j]];
+          bestShared = m.shared; bestWords = m.words;
+        }
+      }
+    }
+    if (!best) return null;
+    return {
+      anchor: { ep: best[0], aff: best[0].affect, sens: best[0].sensory },
+      other:  { ep: best[1], aff: best[1].affect, sens: best[1].sensory },
+      score: bestScore, senses: bestShared, words: bestWords, mode: "texture",
+    };
+  }
+
+  // One entry point; the mode decides which account is in play.
+  function choosePair() {
+    return pairingMode() === "texture" ? chooseTexturePair() : chooseDreamPair();
   }
 
   /* ============================================================
@@ -3666,7 +3797,7 @@ Rules:
 
   async function dreamTick() {
     if (!canDream()) return;
-    const pair = chooseDreamPair();
+    const pair = choosePair();
     if (!pair) return;
     dreaming = true;
     memory.lastDream = new Date().toISOString();
@@ -3720,20 +3851,42 @@ Rules:
       ? " They also share the same sensory texture (" + pair.senses.join(", ")
         + "). That shared texture may be the point \u2014 look at it."
       : "";
-    const body = "=== A MOMENT THAT CARRIED WEIGHT (" + feel + ") ===\n"
-      + episodeText(a.ep).slice(0, 4000)
-      + "\n\n=== AN OLDER MOMENT THAT FELT SIMILAR, ABOUT SOMETHING ELSE ===\n"
-      + episodeText(b.ep).slice(0, 4000);
+    const body = (pair.mode === "texture")
+      ? "=== ONE MOMENT ===\n" + episodeText(a.ep).slice(0, 4000)
+        + "\n\n=== ANOTHER MOMENT, UNRELATED, THAT LOOKS OR SOUNDS LIKE IT ===\n"
+        + episodeText(b.ep).slice(0, 4000)
+      : "=== A MOMENT THAT CARRIED WEIGHT (" + feel + ") ===\n"
+        + episodeText(a.ep).slice(0, 4000)
+        + "\n\n=== AN OLDER MOMENT THAT FELT SIMILAR, ABOUT SOMETHING ELSE ===\n"
+        + episodeText(b.ep).slice(0, 4000);
+
+    // The two modes hand over genuinely different things, so they must not
+    // be described the same way. Mode A found a shared feeling. Mode B found
+    // a shared configuration and does NOT yet know whether it means
+    // anything \u2014 saying otherwise would invite the model to invent the
+    // significance, which is the failure this whole architecture guards
+    // against.
+    const framing = (pair.mode === "texture")
+      ? "These two are here for one reason: they share an unusual sensory configuration ("
+        + ((pair.words && pair.words.length) ? pair.words.join(", ") : (pair.senses || []).join(", "))
+        + "). Nothing else linked them \u2014 not the subject, not the feeling. That may mean "
+        + "something or it may be coincidence, and you should assume coincidence unless the "
+        + "words themselves show otherwise. If a real connection is there, say it. If something "
+        + "recurs and you cannot tell what it means, ask. If it is just two moments that happened "
+        + "to look alike, return {} \u2014 that is the expected answer here more often than not."
+      : "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here." + texture;
 
     const system = "You are revisiting two moments from one person's conversations while they are away. "
-      + "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here." + texture + "\n\n"
+      + framing + "\n\n"
       + 'Return ONLY valid JSON. One of:\n'
       + '  {"idea":"...","moment":"<exact words copied from above>"}   - only if you genuinely understand the connection\n'
       + '  {"question":"...","moment":"<exact words copied from above>"} - if something is clearly there but you do NOT understand it\n'
       + '  {}  - if nothing real connects them\n\n'
       + 'The question form is not a lesser answer, it is the honest one. If you can see that something recurs but not what it means, ask about it instead of explaining it. A question you would actually want answered, in plain words, addressed to them.\n\n'
       + "Rules:\n"
-      + "- Look for what the FEELING has in common, then what situation produces that feeling for them. Not what the topics have in common.\n"
+      + ((pair.mode === "texture")
+          ? "- Do NOT start from the feeling; there may not be a shared one. Start from what is physically the same in both, and ask whether that recurs for a reason.\n"
+          : "- Look for what the FEELING has in common, then what situation produces that feeling for them. Not what the topics have in common.\n")
       + '- "moment" must be copied word for word from the text above. It is checked against the transcript. If you cannot copy real words, return {}.\n' 
       + "- Tentative language only: seems, tends to, might.\n"
       + "- About a pattern and what would help, never a judgement of them and never a diagnosis.\n"
@@ -3744,6 +3897,7 @@ Rules:
     const parsed = m ? JSON.parse(m[0]) : {};
 
     const log = { readChars: body.length, felt: feel, senses: pair.senses || [],
+      mode: pair.mode || "affect", sharedWords: pair.words || [],
       looked: ["a " + feel + " moment", "an older moment that felt the same"],
       insights: [], pings: [] };
 
