@@ -392,6 +392,7 @@
     systemBlocks: (q) => systemBlocks(q),
     pushMessage: (m) => messages.push(m),
     trimTurns: (t, sc, b) => trimTurns(t, sc, b),
+    streamGateway: (c, cb) => streamGateway(c, cb || (() => {})),
     relevantKnowledge: (q, r) => relevantKnowledge(q, r),
     kbSections: () => KB_SECTIONS.map((s) => s.title),
     systemBlocks: (q) => systemBlocks(q),
@@ -3199,8 +3200,11 @@ Rules:
     if (Array.isArray(c)) {
       // An image block costs far more than its text length suggests, so it is
       // charged at a flat rate rather than measured.
+      // Anthropic calls them "image", the gateway's OpenAI format calls them
+      // "image_url". Both must be charged, or an image rides along for free
+      // in the budget and the request blows the provider's token limit.
       return c.reduce((n, b) => n + (b.type === "text" ? String(b.text || "").length
-        : (b.type === "image" ? 4000 : 0)), 0) + 8;
+        : ((b.type === "image" || b.type === "image_url") ? 4000 : 0)), 0) + 8;
     }
     return 8;
   }
@@ -3227,14 +3231,52 @@ Rules:
     const st = BBKit.status();
     if (!st.gatewayReady) throw new Error("gateway key not set");
 
-    const sys = gatewayFlatSystem(systemBlocks(content));
+    // Images used to be dropped here. This loop kept only `type === "text"`
+    // blocks, so an attached photo never left the browser \u2014 the model got
+    // the words with no picture and had to bluff about what it could see.
+    // The gateway is the primary path, so in practice attachments never
+    // worked at all.
+    //
+    // The gateway speaks OpenAI format, which carries images as
+    // image_url parts with a data: URI. So they can be sent \u2014 it just was
+    // never done.
+    let sentImage = false, sentPdf = false;
+    const sys0 = systemBlocks(content);
     const convo = [];
     messages.forEach((m) => {
-      const t = typeof m.content === "string"
-        ? m.content
-        : (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n") : "");
-      if (t) convo.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
+      if (typeof m.content === "string") {
+        if (m.content) convo.push({ role: m.role === "assistant" ? "assistant" : "user", content: m.content });
+        return;
+      }
+      if (!Array.isArray(m.content)) return;
+
+      const parts = [];
+      m.content.forEach((b) => {
+        if (b.type === "text" && b.text) { parts.push({ type: "text", text: b.text }); return; }
+        if (b.type === "image" && b.source && b.source.data) {
+          sentImage = true;
+          parts.push({ type: "image_url",
+            url: "data:" + (b.source.media_type || "image/jpeg") + ";base64," + b.source.data });
+          return;
+        }
+        // A PDF cannot go down this path at all. Say so rather than
+        // pretending it arrived.
+        if (b.type === "document") sentPdf = true;
+      });
+      if (!parts.length) return;
+      const role = m.role === "assistant" ? "assistant" : "user";
+      const onlyText = parts.every((x) => x.type === "text");
+      convo.push({ role, content: onlyText ? parts.map((x) => x.text).join("\n") : parts });
     });
+
+    // If something was attached that this path can't carry, the model must
+    // know, or it will invent a description of a file it never received.
+    let sys = gatewayFlatSystem(sys0);
+    if (sentPdf) {
+      sys += "\n\nATTACHMENT NOTE\nThey attached a PDF. It could NOT be delivered to you on this "
+        + "connection. Say that plainly \u2014 that you can't open it right now \u2014 and offer to work "
+        + "from what they tell you about it. Never describe or summarise its contents; you have not seen it.";
+    }
     const turns = [{ role: "system", content: sys }]
       .concat(trimTurns(convo, sys.length));
 
@@ -3469,6 +3511,22 @@ Rules:
     bits.push("Right now it is " + now.toLocaleDateString(undefined, { weekday: "long" })
       + " " + now.toLocaleDateString() + ", " + now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
       + " \u2014 " + partOfDay(now.getHours()) + " for them.");
+
+    // Stating the time is not enough. Every language model carries a strong
+    // trained habit of insisting it cannot know the current time, and that
+    // habit overrides a bare fact sitting in context \u2014 it will read the
+    // timestamp above and still answer "I'm time-blind, I don't have a clock."
+    //
+    // Which is a particularly bad failure here: this app is built for people
+    // with time blindness, and an assistant that performs helplessness about
+    // time in front of them is worse than useless.
+    //
+    // So the instruction has to be explicit and it has to forbid the specific
+    // sentence the model wants to produce.
+    bits.push("You DO know the current date and time \u2014 it is stated above and it is accurate. "
+      + "Never say you cannot tell time, that you have no clock, that you are time-blind, or that "
+      + "you cannot see timestamps. If asked what time or day it is, answer directly from the line "
+      + "above. Do not hedge and do not apologise for a limitation you do not have.");
 
     const gap = gapPhrase(window.__bbGap || 0);
     if (gap) {
