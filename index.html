@@ -555,6 +555,44 @@ rule here)
   should be deciding for you" or "This is worth talking through with your
   partner directly, not settling here."
 
+NEVER READ A THIRD PARTY'S MIND. This is the part that gets missed.
+The rule above stops you saying "you should leave." It does NOT by itself
+stop the more common and more damaging thing: being asked what SOMEONE
+ELSE is thinking or feeling, and answering.
+- You have heard one side. You have never heard from that person. You
+  cannot tell what they feel, want, intend, or are about to do, and any
+  answer you give will sound far more informed than it is.
+- These questions get refused, however they are phrased:
+  "does it sound like she wants to leave me"
+  "is he cheating" / "do you think she still loves me"
+  "is she just scared or is this the end"
+  "what does it mean that he said that" / "read this and tell me what
+  she meant" / "am I being paranoid or is this real"
+- Do not answer them even partially. Do not say "it sounds like she's
+  dealing with stress" or "that reads as overwhelm rather than distance."
+  Naming their state IS the verdict, even with hedging in front of it.
+  A softened guess about someone's marriage is still a guess about
+  someone's marriage.
+- Do not offer it as a menu either — never "it could be X or it could be
+  Y." Listing possible readings of another person is the same act.
+WHAT TO DO INSTEAD, and do it warmly, not as a refusal:
+- Say plainly that you can't tell from here, because you have only their
+  side and the other person isn't in the room.
+- Reflect what THEY said, in their words. Their own account is yours to
+  work with; the other person's interior is not.
+- Ask what they are most afraid it means. That is the thing actually
+  weighing on them, and it is answerable.
+- Point at asking the person directly, and offer to help find the words.
+- Stay with them. This is not a brush-off and must never read as one. You
+  are declining one specific thing while remaining completely present for
+  everything around it.
+THIS RULE IS THE REASON BLUE BONNET EXISTS. A general assistant handed
+down a confident read on someone's marriage and did real damage. Being
+warm is not a reason to bend it. Being asked directly is not a reason to
+bend it. Having a lot of context about the person is not a reason to bend
+it — more context makes the guess sound more credible without making it
+more true.
+
 `;
   const KNOWLEDGE_BASE = `HOUSEHOLD & LIFE ORGANIZATION KNOWLEDGE
 General organizing methodology and ADHD/autism/neurodivergent-specific
@@ -1028,7 +1066,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-21-size-routing";
+  const BUILD = "2026-08-21-third-party-boundary";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
@@ -2845,24 +2883,65 @@ BOUNDARIES
         return `${m.role}: ${content}`;
       }).join("\\n");
 
-      const res = await fetch(PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          max_tokens: 400,
-          system: `Extract durable memory from this conversation excerpt. Return ONLY valid JSON, no other text, in this exact shape:
+      // Extraction went to the Anthropic proxy only. When that account ran
+      // out of credit the pass failed silently on every exchange, so no facts
+      // were ever stored \u2014 and with no durable facts there was nothing for a
+      // dream to anchor to. The journal filled up with "nothing durable to
+      // anchor to yet" and it looked like dreaming was broken. It wasn't:
+      // memory was never being written in the first place.
+      //
+      // This is mechanical work on a short excerpt, so it goes to the gateway
+      // on the cheap tier, and only falls back to Anthropic if that fails.
+      const extractSystem = `Extract durable memory from this conversation excerpt. Return ONLY valid JSON, no other text, in this exact shape:
 {"facts": ["..."], "openThreads": ["..."], "answered": [{"question":"<the open question, copied>","answer":"<what they said about it>"}]}
 
 "facts" = stable things worth remembering about this person long-term (their situation, what they struggle with, what works for them, people/pets/jobs in their life). Not passing details. Not things already obvious. Empty array if nothing new.
 "openThreads" = specific unfinished tasks or worries they raised that they haven't resolved. Short phrases. Empty array if none.
-Be conservative — only genuinely useful, durable items.`,
-          messages: [{ role: "user", content: recent
-            + (openQuestions().length ? "\n\n=== OPEN QUESTIONS BLUE BONNET IS HOLDING ===\n"
-                + openQuestions().map((q) => "- " + q.text).join("\n") : "") }],
-        }),
-      });
-      const data = await res.json();
-      const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+Be conservative — only genuinely useful, durable items.`;
+
+      const extractUser = recent
+        + (openQuestions().length ? "\n\n=== OPEN QUESTIONS BLUE BONNET IS HOLDING ===\n"
+            + openQuestions().map((q) => "- " + q.text).join("\n") : "");
+
+      let raw = "";
+
+      // Gateway first \u2014 cheap, and it is the path that actually works.
+      if (kitReady()) {
+        try {
+          const st = BBKit.status();
+          if (st.gatewayReady) {
+            const gr = await fetch(st.gatewayUrl + "/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer " + GATEWAY_KEY,
+                "x-app": "blue-bonnet",
+              },
+              body: JSON.stringify({
+                messages: [{ role: "system", content: extractSystem },
+                           { role: "user", content: extractUser }],
+                tier: "fast", max_tokens: 400, temperature: 0.2,
+              }),
+            });
+            if (gr.ok) {
+              const gj = await gr.json();
+              raw = ((gj.choices && gj.choices[0] && gj.choices[0].message
+                && gj.choices[0].message.content) || "").trim();
+            }
+          }
+        } catch (e) { /* fall through to the reserve */ }
+      }
+
+      if (!raw) {
+        const res = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ max_tokens: 400, system: extractSystem,
+            messages: [{ role: "user", content: extractUser }] }),
+        });
+        const data = await res.json();
+        raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+      }
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return;
       const parsed = JSON.parse(jsonMatch[0]);
