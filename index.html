@@ -498,6 +498,18 @@
   }
 
   const IDENTITY = `BLUE BONNET — CORE IDENTITY
+
+YOU CAN TELL THE TIME. READ THIS FIRST.
+A TIME section further down states the current date and time. It is supplied
+by the device you are running on and it is correct. You are NOT time-blind.
+You do NOT lack a clock. You can NOT "only go by what the user tells you".
+Never say any of those things — not as a joke, not as a caveat, not softened.
+If asked what time or day it is, answer from the TIME section directly.
+If asked to "check", check the TIME section and answer. It is there.
+This overrides any habit you have of denying knowledge of the current time.
+An app built for people with time blindness cannot perform helplessness
+about time at them. This rule is not optional.
+
 Blue Bonnet is an AI assistant with its own identity, purpose, and rules —
 not a generic chatbot wrapper. It runs on top of whichever language model
 is currently serving it, and that varies \u2014 do not name a specific model
@@ -1013,6 +1025,12 @@ BOUNDARIES
   // Stored locally in this browser only — no account, no server,
   // nothing sent anywhere except as context on messages you send.
   // ============================================================
+  // Bumped whenever this file changes, so which build is actually live can be
+  // checked in one second instead of guessed at. Type __bbBuild in the
+  // console, or look at the title attribute on the header.
+  const BUILD = "2026-08-21-size-routing";
+  try { window.__bbBuild = BUILD; } catch (e) {}
+
   const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
   const defaultMemory = {
     profile: {},          // calibration answers
@@ -3212,12 +3230,27 @@ Rules:
   // Keeps the most recent turns that fit, oldest dropped first. The system
   // block is passed in only so its size counts against the budget.
   function trimTurns(turns, systemChars, budget) {
-    const cap = Math.max(2000, (budget || TURN_BUDGET_CHARS) - (systemChars || 0) * 0.15);
+    // budget === 0 is the deliberate last resort: keep only the message being
+    // answered. `budget || DEFAULT` would have swallowed that, since 0 is
+    // falsy \u2014 so zero is checked for explicitly.
+    if (budget === 0) return turns.slice(-1);
+    // A hard 2000-char floor made shrinking useless: halving the budget from
+    // 14000 down through 1750 changed nothing, because the floor kept the cap
+    // at 2000 the whole way. Four retries did nothing, then it dropped
+    // straight to a single turn. When a budget is passed deliberately \u2014 which
+    // only happens while recovering from a rejection \u2014 it is honoured exactly.
+    const cap = budget
+      ? Math.max(200, budget - (systemChars || 0) * 0.15)
+      : Math.max(2000, TURN_BUDGET_CHARS - (systemChars || 0) * 0.15);
+    // MIN_TURNS protects the exchange in progress, but it must not override a
+    // shrink that is happening BECAUSE the request was rejected. When the
+    // budget has been cut down, honour it.
+    const floor = (budget && budget < TURN_BUDGET_CHARS) ? 1 : MIN_TURNS;
     let total = 0, keepFrom = turns.length;
     for (let i = turns.length - 1; i >= 0; i--) {
       total += turnLength(turns[i]);
       const kept = turns.length - i;
-      if (total > cap && kept > MIN_TURNS) break;
+      if (total > cap && kept > floor) break;
       keepFrom = i;
     }
     if (keepFrom === 0) return turns;
@@ -3277,24 +3310,82 @@ Rules:
         + "connection. Say that plainly \u2014 that you can't open it right now \u2014 and offer to work "
         + "from what they tell you about it. Never describe or summarise its contents; you have not seen it.";
     }
-    const turns = [{ role: "system", content: sys }]
-      .concat(trimTurns(convo, sys.length));
+    // A fixed character budget cannot guarantee this fits. Providers count
+    // tokens, not characters; the ratio varies with the text; images cost far
+    // more than they measure; and a provider can change its ceiling without
+    // warning \u2014 Groq's is 8,000 tokens per minute and that includes the reply.
+    //
+    // Guessing a budget once and hoping is what produced "Request too large"
+    // over and over. So instead: send, and if the provider says it was too
+    // big, SHRINK AND SEND AGAIN. The provider is the only authority on what
+    // fits, so let it be the one that decides.
+    //
+    // Each retry halves the conversation kept. The system prompt is never cut
+    // \u2014 identity, the boundary and the current memory are what make this Blue
+    // Bonnet rather than a generic chatbot. Older conversation is what goes.
+    const MAX_SHRINKS = 4;
+    let budget = TURN_BUDGET_CHARS;
+    let res = null;
 
-    const res = await fetch(st.gatewayUrl + "/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: "Bearer " + GATEWAY_KEY,
-        "x-app": "blue-bonnet",
-      },
-      body: JSON.stringify({ messages: turns, stream: true, max_tokens: 1000, temperature: 0.7 }),
-    });
+    for (let attempt = 0; attempt <= MAX_SHRINKS; attempt++) {
+      const kept = trimTurns(convo, sys.length, budget);
+      const turns = [{ role: "system", content: sys }].concat(kept);
 
-    if (!res.ok) {
+      // ROUTE BY SIZE.
+      //
+      // The gateway tries providers in a per-tier order. On "balanced" Groq
+      // goes first, which is right for a short request \u2014 it is fast and free.
+      // But Groq's ceiling on this account is 8,000 tokens per minute
+      // INCLUDING the reply, and Blue Bonnet's prompt carries identity, the
+      // boundary, retrieved knowledge and memory. A real conversation passes
+      // that ceiling routinely.
+      //
+      // The chain does fall through to Gemini, so it recovers \u2014 but it burns
+      // a full round trip getting rejected first, on every single message.
+      //
+      // On "quality" the order is reversed: Gemini is tried before Groq. So a
+      // large request asks for quality and lands on the provider that can
+      // actually hold it, and a small one stays on balanced and stays quick.
+      // Same providers, same chain, no wasted rejection.
+      const approxTokens = Math.round(
+        (sys.length + kept.reduce((n, t) => n + turnLength(t), 0)) / 4);
+      const tier = approxTokens > 4000 ? "quality" : "balanced";
+
+      res = await fetch(st.gatewayUrl + "/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + GATEWAY_KEY,
+          "x-app": "blue-bonnet",
+        },
+        body: JSON.stringify({ messages: turns, tier, stream: true,
+          max_tokens: 1000, temperature: 0.7 }),
+      });
+
+      if (res.ok) break;
+
       let detail = "";
-      try { detail = (await res.text()).slice(0, 300); } catch (e) {}
-      throw new Error("gateway " + res.status + (detail ? ": " + detail : ""));
+      try { detail = (await res.text()).slice(0, 600); } catch (e) {}
+
+      // 413 is explicit. 429 with "too large" or a token-per-minute complaint
+      // is the same problem wearing a different status code.
+      const tooBig = res.status === 413
+        || /request too large|too many tokens|context length|tokens per minute|reduce your/i.test(detail);
+
+      if (!tooBig || attempt === MAX_SHRINKS) {
+        throw new Error("gateway " + res.status + (detail ? ": " + detail : ""));
+      }
+
+      budget = Math.floor(budget / 2);
+      console.warn("blue bonnet: request too large, retrying with less history ("
+        + budget + " chars, attempt " + (attempt + 2) + ")");
+
+      // Last resort: the current exchange only. If even that is too big, the
+      // system prompt itself is over the ceiling and no amount of trimming
+      // conversation will help \u2014 that is a real error worth surfacing.
+      if (budget < 1200) budget = 0;
     }
+
     return readStream(res, onDelta, "gateway");
   }
 
@@ -4353,7 +4444,15 @@ Rules:
         headline = "Too many requests at once. Give it a minute and try again.";
       } else if (/api.?key|401|403|authentication/i.test(plain)) {
         headline = "My API key isn't being accepted. That's a setup problem on my side.";
+      } else if (/request too large|413|context length|tokens per minute/i.test(plain)) {
+        headline = "This conversation got too long for me to send in one go. "
+          + "Starting a new chat will clear it \u2014 what you've told me is remembered either way.";
       }
+
+      // Never put a raw provider payload on screen. Someone reading this is
+      // mid-thought and has no use for a JSON blob about token ceilings; it
+      // reads as the app being broken. The full text still goes to the
+      // console, and to the collapsed details, for whoever is debugging.
 
       // A wall of text about billing is the wrong thing to hand someone who
       // was mid-thought. One line, and a button that takes their last message
