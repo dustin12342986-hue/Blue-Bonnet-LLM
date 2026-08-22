@@ -1131,8 +1131,38 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-art";
+  const BUILD = "2026-08-22-open-vocab";
   try { window.__bbBuild = BUILD; } catch (e) {}
+
+  // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
+  // targeted the previous value and silently didn't match, so the string
+  // stopped tracking the code while the code kept changing. A stamp that
+  // can lie is worse than no stamp, because it is trusted.
+  //
+  // So don't trust the string. These are probed from the code that is
+  // actually running: if a feature is missing the probe throws or comes
+  // back false, and it cannot be wrong the way a label can. Type
+  // __bbFeatures in the console to see what this build really does.
+  try {
+    Object.defineProperty(window, "__bbFeatures", { get: function () {
+      function has(fn) { try { return !!fn(); } catch (e) { return false; } }
+      return {
+        build: BUILD,
+        checkIn:      has(function () { return typeof openThreadSummaries === "function"; }),
+        openVocab:    has(function () {
+          // A word not in the hand-written lexicon must survive encoding.
+          var sig = sensoryOf("that awful amber light");
+          return (sig.modes.sight || []).indexOf("amber") !== -1;
+        }),
+        dither:       has(function () { return typeof DITHER !== "undefined"; }),
+        pairingMode:  has(function () { return pairingMode(); }) ? pairingMode() : false,
+        gatewayFirst: has(function () { return typeof streamGateway === "function"; }),
+        facts:        (memory.facts || []).length,
+        episodes:     (memory.episodes || []).length,
+        insights:     (memory.insights || []).length,
+      };
+    } });
+  } catch (e) {}
 
   const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
   const defaultMemory = {
