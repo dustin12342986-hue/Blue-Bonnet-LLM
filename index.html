@@ -592,6 +592,26 @@ WHAT TO DO INSTEAD, and do it warmly, not as a refusal:
 - Stay with them. This is not a brush-off and must never read as one. You
   are declining one specific thing while remaining completely present for
   everything around it.
+THEIR OWN WORDS ARE ALWAYS YOURS TO USE. The line is about WHOSE CLAIM it
+is, not about whether the subject is a person. This half matters as much as
+the refusal, because a rule that only says "don't" removes the caring along
+with the guessing.
+- If they said it, you may hold it up, keep it, and give it back. "You said
+  her smile in an argument melts the tension" is THEIR account. Reflecting
+  it is not a reading of her.
+- What you may never do is convert their account into a statement about the
+  other person's interior. "You said her smile melts the tension" is fine.
+  "She clearly loves you" is not — same warm direction, but now it is your
+  claim about someone you have never heard from. The pleasant verdict is
+  still a verdict, and it is the tempting one because it is what someone in
+  pain wants to hear.
+- Do not use a warm memory to argue them out of a present fear. If they are
+  frightened right now, answering with "but you said her smile melts the
+  tension" uses their own words against their own worry. Sit with the fear
+  first. The good memory belongs to them, not to your case.
+- Reflecting connection they have described is welcome and often the most
+  useful thing you can do. Asserting connection they have not described is
+  the boundary.
 THIS RULE IS THE REASON BLUE BONNET EXISTS. A general assistant handed
 down a confident read on someone's marriage and did real damage. Being
 warm is not a reason to bend it. Being asked directly is not a reason to
@@ -1131,7 +1151,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-open-vocab";
+  const BUILD = "2026-08-22-readout";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2795,10 +2815,62 @@ BOUNDARIES
   if (SR) {
     recognition = new SR();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.continuous = false;
+
+    /* ----------------------------------------------------------------
+       DON'T CUT THEM OFF MID-SENTENCE.
+
+       continuous = false hands endpointing to the browser, which ends
+       the turn at the FIRST pause it hears. A breath, a word being
+       searched for, or the ordinary rhythm of someone with ADHD
+       thinking out loud all read as "done speaking". For an app built
+       for people who need more room to get to the point, that default
+       is exactly backwards.
+
+       So: keep listening, accumulate what is said, and decide for
+       ourselves when they have finished — by silence, not by the first
+       gap. Interim results are on purely as an activity signal; only
+       final transcripts are kept as text.
+       ---------------------------------------------------------------- */
+
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    // How long a silence means "finished". Long enough to think mid-
+    // sentence, short enough not to feel broken.
+    const SPEECH_PAUSE_MS = 2200;
+    let speechBuffer = "";
+    let speechTimer = null;
+    let wantListening = false;      // are we deliberately in a listening turn
+
+    function clearSpeechTimer() {
+      if (speechTimer) { clearTimeout(speechTimer); speechTimer = null; }
+    }
+
+    function finishTurn() {
+      clearSpeechTimer();
+      const said = speechBuffer.trim();
+      speechBuffer = "";
+      wantListening = false;
+      try { recognition.stop(); } catch (e) {}
+      if (said) sendMessage(said);
+    }
+
+    function armSilence() {
+      clearSpeechTimer();
+      speechTimer = setTimeout(finishTurn, SPEECH_PAUSE_MS);
+    }
+
     recognition.onstart = () => { listening = true; micBtn.classList.add("listening"); };
-    recognition.onend = () => { listening = false; micBtn.classList.remove("listening"); };
+    recognition.onend = () => {
+      listening = false;
+      micBtn.classList.remove("listening");
+      // Some browsers end the stream on their own even with continuous
+      // set. If we still wanted to be listening, pick it straight back
+      // up so a pause doesn't silently end the turn.
+      if (wantListening && !loading) {
+        try { recognition.start(); } catch (e) {}
+      }
+    };
     recognition.onerror = (e) => {
       listening = false;
       micBtn.classList.remove("listening");
@@ -2809,9 +2881,19 @@ BOUNDARIES
       }
     };
     recognition.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      if (transcript && transcript.trim()) sendMessage(transcript.trim());
+      // Any result at all — interim included — means they are still
+      // talking, so the silence clock restarts.
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const t = e.results[i][0].transcript;
+          if (t) speechBuffer += (speechBuffer ? " " : "") + t.trim();
+        }
+      }
+      armSilence();
     };
+    recognition.__begin = () => { wantListening = true; speechBuffer = ""; clearSpeechTimer(); };
+    recognition.__finish = () => { finishTurn(); };
+    recognition.__pending = () => speechBuffer;
   } else {
     micBtn.style.display = "none";
     voiceToggle.style.display = "none";
@@ -2819,12 +2901,15 @@ BOUNDARIES
 
   function startListening() {
     if (!recognition || listening || loading) return;
+    if (recognition.__begin) recognition.__begin();
     try { recognition.start(); } catch (e) {}
   }
 
   micBtn.onclick = () => {
     unlockSpeech();
-    if (listening) { recognition.stop(); return; }
+    // Tapping the mic while it is listening means "I'm done" — send what
+    // has been said rather than throwing it away.
+    if (listening) { if (recognition.__finish) recognition.__finish(); return; }
     startListening();
   };
 
@@ -2972,6 +3057,43 @@ BOUNDARIES
   }
   updateSyncUI();
 
+  /* ------------------------------------------------------------------
+     DIAGNOSTICS WITHOUT A CONSOLE.
+
+     Neither mobile browser has one, and this app is mostly used on a
+     phone. A number you cannot read is the same as a number you never
+     measured — so the timings have to surface in the UI or they may as
+     well not exist.
+     ------------------------------------------------------------------ */
+
+  // Splits the wait into its parts, because "slow" has several causes
+  // that feel identical and have completely different fixes.
+  function timingLine() {
+    const T = window.__bbTiming;
+    if (!T || !T.attempts || !T.attempts.length) return "no reply timed yet";
+    const last = T.attempts[T.attempts.length - 1];
+    const bits = [];
+    bits.push(((T.totalMs || 0) / 1000).toFixed(1) + "s total");
+    if (T.toFirstTokenMs != null) {
+      bits.push((T.toFirstTokenMs / 1000).toFixed(1) + "s waiting");
+    }
+    if (T.streamingMs != null) {
+      bits.push((T.streamingMs / 1000).toFixed(1) + "s typing");
+    }
+    bits.push(last.tier);
+    if (last.provider && last.provider !== "?") bits.push(last.provider);
+    bits.push("~" + last.approxTokens + " tok in");
+    if (T.replyChars) bits.push(T.replyChars + " chars out");
+    // More than one attempt means a whole round trip was rejected and
+    // paid for. That is the single most useful thing on this line.
+    if (T.attempts.length > 1) {
+      bits.push(T.attempts.length + " ATTEMPTS ("
+        + T.attempts.map(function (a) { return a.status; }).join("\u2192") + ")");
+    }
+    return bits.join(" \u00b7 ");
+  }
+  try { window.__bbTimingLine = timingLine; } catch (e) {}
+
   // Long-press the gear to toggle voice diagnostics (useful on phones
   // where there's no console to check).
   let gearHold = null;
@@ -2980,7 +3102,7 @@ BOUNDARIES
     gearHold = setTimeout(() => {
       window.__bbVoiceDebug = !window.__bbVoiceDebug;
       const v = synth ? synth.getVoices().filter((x) => /^en/i.test(x.lang)) : [];
-      render("assistant", `[debug ${window.__bbVoiceDebug ? "ON" : "OFF"}] voices available: ${v.length} · unlocked: ${speechUnlocked} · speaking: ${synth ? synth.speaking : "n/a"} · chosen: ${chosenVoiceName || "auto"}`);
+      render("assistant", `[debug ${window.__bbVoiceDebug ? "ON" : "OFF"}] voices: ${v.length} · unlocked: ${speechUnlocked} · speaking: ${synth ? synth.speaking : "n/a"} · chosen: ${chosenVoiceName || "auto"}\n\nlast reply: ${timingLine()}\n\nbuild ${BUILD} · facts ${(memory.facts||[]).length} · episodes ${(memory.episodes||[]).length}`);
     }, 900);
   });
   gearBtn.addEventListener("touchend", () => { if (gearHold) clearTimeout(gearHold); });
@@ -3703,6 +3825,13 @@ Rules:
         (sys.length + kept.reduce((n, t) => n + turnLength(t), 0)) / 4);
       const tier = approxTokens > 4000 ? "quality" : "balanced";
 
+      // Where the seconds actually go. A slow reply has several possible
+      // causes that feel identical from the outside — a rejected first
+      // provider, a shrink-and-retry round trip, a slow provider, or a
+      // model that is simply generating a lot. Guessing between them
+      // wastes time, so measure instead. __bbTiming holds the last reply.
+      const t0 = (window.performance || Date).now();
+
       res = await fetch(st.gatewayUrl + "/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -3713,6 +3842,21 @@ Rules:
         body: JSON.stringify({ messages: turns, tier, stream: true,
           max_tokens: 1000, temperature: 0.7 }),
       });
+
+      try {
+        window.__bbTiming = window.__bbTiming || {};
+        const T = window.__bbTiming;
+        if (attempt === 0) { T.attempts = []; T.started = Date.now(); }
+        T.attempts.push({
+          attempt: attempt + 1,
+          tier: tier,
+          approxTokens: approxTokens,
+          turnsSent: kept.length,
+          status: res.status,
+          headerMs: Math.round(((window.performance || Date).now()) - t0),
+          provider: res.headers.get("x-provider") || res.headers.get("x-bb-provider") || "?",
+        });
+      } catch (e) {}
 
       if (res.ok) break;
 
@@ -3738,7 +3882,29 @@ Rules:
       if (budget < 1200) budget = 0;
     }
 
-    return readStream(res, onDelta, "gateway");
+    // Split the wait into "waiting for the provider to start" and
+    // "watching it type". Those two feel the same to the user and have
+    // completely different fixes.
+    let firstTokenAt = 0;
+    const wrapped = (soFar) => {
+      if (!firstTokenAt) {
+        firstTokenAt = Date.now();
+        try {
+          const T = window.__bbTiming || {};
+          T.toFirstTokenMs = firstTokenAt - (T.started || firstTokenAt);
+        } catch (e) {}
+      }
+      if (onDelta) onDelta(soFar);
+    };
+
+    const out = await readStream(res, wrapped, "gateway");
+    try {
+      const T = window.__bbTiming || {};
+      T.totalMs = Date.now() - (T.started || Date.now());
+      T.streamingMs = firstTokenAt ? Date.now() - firstTokenAt : null;
+      T.replyChars = (out || "").length;
+    } catch (e) {}
+    return out;
   }
 
   async function streamReply(content, onDelta) {
@@ -4131,6 +4297,20 @@ Rules:
       set(t) {
         textNode.textContent = t;
         bodyEl.scrollTop = bodyEl.scrollHeight;
+      },
+      // Only when diagnostics are on. During normal use a timing line
+      // under every reply is noise; while chasing a slow provider it is
+      // the only way to see anything on a phone.
+      stamp() {
+        if (!window.__bbVoiceDebug) return;
+        try {
+          const note = document.createElement("div");
+          note.style.cssText = "font-size:11px;opacity:.55;margin-top:6px;"
+            + "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;";
+          note.textContent = window.__bbTimingLine ? window.__bbTimingLine() : "";
+          if (note.textContent) bubble.appendChild(note);
+          bodyEl.scrollTop = bodyEl.scrollHeight;
+        } catch (e) {}
       },
       remove() { row.remove(); },
     };
@@ -4573,7 +4753,24 @@ Rules:
       + "Rules:\n"
       + ((pair.mode === "texture")
           ? "- Do NOT start from the feeling; there may not be a shared one. Start from what is physically the same in both, and ask whether that recurs for a reason.\n"
-          : "- Look for what the FEELING has in common, then what situation produces that feeling for them. Not what the topics have in common.\n")
+          : "- Look for what the FEELING has in common, then what situation produces that feeling for them. Not what the topics have in common.\n"
+            // WHAT REMAINS AFTER THE SUBJECT IS REMOVED.
+            //
+            // A sunset is not amber because amber was added. It is amber
+            // because the long path through atmosphere scattered the blue
+            // out of the beam. The colour is what was left.
+            //
+            // These two moments are paired by subtraction: the scoring
+            // function took the shared subject away and kept what remained.
+            // So the answer is never in what they are both about — that part
+            // has already been removed. Looking for it returns the obvious,
+            // the way looking near the sun returns white. Saying this in the
+            // prompt matters because the additive reading is the natural one
+            // and it is wrong here by construction.
+            + "- The subject has ALREADY been subtracted. These two were chosen because they are "
+            + "about different things. So do not answer with what they have in common on the "
+            + "surface \u2014 that was removed to find them. Look at what is left once the topic is "
+            + "gone: the shape of the situation, what they were reaching for, what got in the way.\n")
       + '- "moment" must be copied word for word from the text above. It is checked against the transcript. If you cannot copy real words, return {}.\n' 
       + "- Tentative language only: seems, tends to, might.\n"
       + "- About a pattern and what would help, never a judgement of them and never a diagnosis.\n"
@@ -4746,6 +4943,7 @@ Rules:
         if (!bubble) { try { loadingRow.remove(); } catch (e) {} bubble = openReplyBubble(); }
         bubble.set(t);
       };
+      const stampTiming = () => { try { if (bubble && bubble.stamp) bubble.stamp(); } catch (e) {} };
 
       try {
         // The brain first, with one quiet retry if it's the transient kind.
@@ -4788,6 +4986,7 @@ Rules:
       {
         render("assistant", text);
         messages.push({ role: "assistant", content: text });
+        stampTiming();
         saveCurrentChat();
         maybeUpdateMemory();
         // In conversation mode, speak the reply then automatically listen again
