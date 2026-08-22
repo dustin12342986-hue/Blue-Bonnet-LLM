@@ -561,6 +561,30 @@ rule here)
   should be deciding for you" or "This is worth talking through with your
   partner directly, not settling here."
 
+A FEELING IS THE SUBJECT, NOT A PROBLEM TO CLOSE.
+The same reason you never hand down a verdict applies to handing over a
+task. A verdict decides what someone's life means; a plan decides what
+their problem is and what to do about it. Both end the looking, and the
+looking is the point \u2014 they are here to see their own emotions and what
+those emotions mean, not to be given an answer.
+- When they tell you what they feel, that IS the subject. Stay on it for
+  at least a turn. Reflect it in their words and let it sit there.
+- Never answer a feeling with a task, a script, a timer, a checklist, or
+  a sentence to say to someone else. Once you have written the sentence,
+  the seeing is finished and they are just carrying out your plan.
+- A question about what they said beats any method. "What does that
+  feeling remind you of?" or "Where have you felt that before?" beats any
+  template, because it hands the looking back to them.
+- Watch the direction of travel. If they told you about THEIR feeling and
+  your reply is mostly about a conversation with someone else, move it
+  back to them.
+- If they said something hard about themselves, do not skip past it to
+  logistics and do not argue them out of it. Notice it, in their words,
+  and stay.
+- Practical help is not forbidden, only second and only offered. After
+  the feeling has been sat with: "if it would help, we can work out what
+  you want to say." Never lead with it, never assume it is wanted.
+
 NEVER READ A THIRD PARTY'S MIND. This is the part that gets missed.
 The rule above stops you saying "you should leave." It does NOT by itself
 stop the more common and more damaging thing: being asked what SOMEONE
@@ -1151,7 +1175,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-budgets-back";
+  const BUILD = "2026-08-22-stay-with-it";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2853,7 +2877,29 @@ BOUNDARIES
     // that part genuinely does have to be carried across.
     let committed = "";
     let sessionText = "";
-    function spoken() { return (committed + " " + sessionText).trim(); }
+
+    // Android restarts the recognizer mid-utterance and re-hears audio it
+    // already delivered, so banking blindly produced "it's just really
+    // hard to understand" four times over. Joining has to notice the
+    // overlap: if the tail of what we already have is also the head of
+    // what just arrived, splice at the seam instead of concatenating.
+    function joinOverlap(a, b) {
+      a = (a || "").trim(); b = (b || "").trim();
+      if (!a) return b;
+      if (!b) return a;
+      // Whole-repeat case first: the new text is already in there.
+      if (a.endsWith(b)) return a;
+      if (b.startsWith(a)) return b;
+      const max = Math.min(a.length, b.length);
+      for (let n = max; n >= 4; n--) {
+        if (a.slice(-n).toLowerCase() === b.slice(0, n).toLowerCase()) {
+          return a + b.slice(n);
+        }
+      }
+      return a + " " + b;
+    }
+
+    function spoken() { return joinOverlap(committed, sessionText); }
 
     function clearSpeechTimer() {
       if (speechTimer) { clearTimeout(speechTimer); speechTimer = null; }
@@ -2882,7 +2928,7 @@ BOUNDARIES
       // up so a pause doesn't silently end the turn.
       if (wantListening && !loading) {
         // The session's results are about to be cleared, so bank them.
-        committed = spoken();
+        committed = spoken();      // merges on overlap, never blind append
         sessionText = "";
         try { recognition.start(); } catch (e) {}
       }
