@@ -1175,7 +1175,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-stay-with-it";
+  const BUILD = "2026-08-22-mic2";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2890,12 +2890,23 @@ BOUNDARIES
       // Whole-repeat case first: the new text is already in there.
       if (a.endsWith(b)) return a;
       if (b.startsWith(a)) return b;
-      const max = Math.min(a.length, b.length);
-      for (let n = max; n >= 4; n--) {
-        if (a.slice(-n).toLowerCase() === b.slice(0, n).toLowerCase()) {
-          return a + b.slice(n);
+      // Compare by WORDS, not characters. Each re-hearing comes back
+      // slightly different — "even though" one pass, "even though that"
+      // the next — and a character seam misses that where a word seam
+      // does not.
+      const aw = a.split(/\s+/), bw = b.split(/\s+/);
+      const norm = (w) => w.toLowerCase().replace(/[^a-z0-9']/g, "");
+      const max = Math.min(aw.length, bw.length);
+      for (let n = max; n >= 2; n--) {
+        let same = true;
+        for (let k = 0; k < n; k++) {
+          if (norm(aw[aw.length - n + k]) !== norm(bw[k])) { same = false; break; }
         }
+        if (same) return aw.concat(bw.slice(n)).join(" ");
       }
+      // A single repeated word is too weak to splice on its own, EXCEPT
+      // when it is the entire new fragment — that is a stutter, not speech.
+      if (bw.length === 1 && norm(aw[aw.length - 1]) === norm(bw[0])) return a;
       return a + " " + b;
     }
 
@@ -2945,11 +2956,15 @@ BOUNDARIES
     recognition.onresult = (e) => {
       // Any result at all — interim included — means they are still
       // talking, so the silence clock restarts.
+      // Finals within ONE session overlap too — Android delivers "like",
+      // then "like understand", then "like understand what". Concatenating
+      // those is what produced "like like understand like understand
+      // what". So merge between finals exactly as we do across restarts.
       let rebuilt = "";
       for (let i = 0; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
           const t = (e.results[i][0].transcript || "").trim();
-          if (t) rebuilt += (rebuilt ? " " : "") + t;
+          if (t) rebuilt = joinOverlap(rebuilt, t);
         }
       }
       sessionText = rebuilt;
