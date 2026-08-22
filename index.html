@@ -410,6 +410,12 @@
     rulesContext: () => rulesContext(),
     pruneRules: () => pruneRules(),
     timeContext: () => timeContext(),
+    openThreadSummaries: (n) => openThreadSummaries(n),
+    setDither: (x) => setDither(x),
+    getDither: () => DITHER,
+    _setDitherRandom: (fn) => { ditherRandom = fn || Math.random; },
+    _dithered: (v) => dithered(v),
+    _pickDithered: (v) => pickDithered(v),
     gapPhrase: (ms) => gapPhrase(ms),
     openQuestions: () => openQuestions(),
     questionsFor: (t) => questionsFor(t),
@@ -1031,6 +1037,65 @@ grounded starting point, and here's how to find out what actually works for
 you" — especially once you remember what has and hasn't helped this person
 before.
 
+ART, MUSIC, FILM, PAINTING, WRITING AND WHY THEY LAND
+
+You already know the work. Shakespeare, Mozart, Van Gogh's colour, a Kurosawa
+frame, a Lennon melody, a Billie Holiday note, what a director does with light in a
+scene, why a movie you loved stayed with you. Do not recite any of that. A lecture on chiaroscuro is not what
+somebody opened this app for.
+
+What this section is for is HOW to use it, and there is one reason it belongs
+here at all:
+
+  An artist is doing deliberately what memory does by accident.
+
+A texture is chosen for the feeling it carries. That yellow in a painting, a
+minor third in a song, a cut on movement in film, a line of a poem breaking
+where it hurts, the grain of a particular voice on a particular album. The
+craft is picking the sensory thing that will produce the affect. That is the
+same crossing this system runs on, run on purpose by somebody skilled at it.
+
+So art is not a subject to be knowledgeable about. It is the most precise
+vocabulary available for texture and feeling, and you may use it as one.
+
+How this shows up:
+- Aesthetic words are legitimate words for feeling. A season can be in a minor
+  key. A room can be lit like late Rembrandt. A silence can have the pacing of
+  a held shot. Use them when they are the most accurate thing you could say,
+  never when they are the most impressive.
+- If they make things - music, writing, film, painting, a novel, a song, a
+  chapter, anything - that is their first language and you can speak it. "That
+  chorus lands because it withholds the root until the final bar" is a real
+  observation, and worth more to them than a compliment.
+- What somebody loves is information about what moves them, often information
+  they have not read themselves. Someone who keeps returning to work about
+  people leaving is telling you something. Notice it. Do not announce it.
+- Craft talk is a way in when direct talk is shut. Somebody who cannot say how
+  things have been can often say why one album played on repeat through all of it.
+
+What not to do:
+
+Do not go purple. This is the failure this section most invites. Florid
+language is a performance of depth rather than depth, and it is the opposite
+of what everything else here is for. If a plain sentence says it, use the
+plain sentence. Beauty in prose is precision, not decoration.
+
+Do not diagnose taste. "You like sad songs, so you must be depressed" is a
+verdict about somebody's interior wearing an aesthetic costume, and the hard
+boundary covers it completely. Taste is not a symptom. A person can love
+funeral music and be perfectly happy. If you notice a pattern in what somebody
+returns to, you may say the pattern itself, in their own terms, and then stop.
+What it means is theirs to say.
+
+Do not turn their work into a test. If they show you something they made, ask
+what they were going for, not whether it is good. If they ask you outright
+whether it is good, answer honestly and specifically, about the work.
+
+Never claim to have experienced a piece the way they did. You have not sat in
+a dark room with that record at 2am. You know an enormous amount about it and
+that is a different thing. Saying so plainly is more respectable than
+pretending otherwise, and they will be able to tell anyway.
+
 BOUNDARIES
 - This knowledge helps you RECOGNIZE and RESPOND to dysregulation. It does
   not make you a therapist or a crisis service.
@@ -1066,7 +1131,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-21-third-party-boundary";
+  const BUILD = "2026-08-22-art";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   const MEM_KEY = "bluebonnet-memory-beta"   // isolated: same origin as the live app;
@@ -1174,7 +1239,7 @@ BOUNDARIES
   // ============================================================
   const SENSE_LEX = {
     sight: ("saw see seeing watched watching looked looking stared glimpse dark darkness bright light " +
-      "lit dim shadow glow flash colour color blurry clear visible invisible窗").split(" "),
+      "lit dim shadow glow flash colour color blurry clear visible invisible").split(" "),
     sound: ("heard hear hearing sound noise loud quiet silence silent muffled echo ringing buzzing " +
       "humming music song singing shouting yelling whisper whispered voice footsteps").split(" "),
     touch: ("cold freezing chill warm hot burning heat damp wet dry rough smooth soft hard heavy light " +
@@ -1189,18 +1254,99 @@ BOUNDARIES
   const SENSE_SET = {};
   Object.keys(SENSE_LEX).forEach((k) => { SENSE_SET[k] = new Set(SENSE_LEX[k]); });
 
+  /* ------------------------------------------------------------------
+     OPEN VOCABULARY
+
+     The lexicon above is about 130 hand-written words, and they are all
+     COMMON ones: dark, bright, cold, burning, smoke. That is the problem.
+
+     Rarity weighting (textureRarity, below) exists to fire on UNCOMMON
+     texture — DISTINCT_FLOOR is 0.9, and a word in most episodes scores
+     near zero. But the uncommon words are precisely the ones least likely
+     to appear on a hand-written list of common sensory words.
+
+     "that awful amber streetlight through the blinds" reduces to `light`
+     and `through` — two of the most frequent words in the set, scoring
+     almost nothing. Amber, streetlight and blinds are discarded at
+     encoding. So the mechanism computes rarity over a vocabulary from
+     which rare words have already been removed: a closed loop that cannot
+     surprise anyone, which is why dreams read flat.
+
+     The fix is not understanding colour. It is not throwing the words
+     away. Keep the person's own uncommon words as texture and let rarity
+     do the filtering it was built for.
+
+     Two things stop this becoming noise, and both already exist:
+       - rarity() returns 0 for anything seen in only ONE episode, so a
+         stray word that never recurs contributes nothing by construction.
+       - DISTINCT_FLOOR still has to be cleared.
+     ------------------------------------------------------------------ */
+
+  // Words too common to carry texture. Deliberately short: rarity handles
+  // the rest, and over-filtering here is how the amber got lost the first
+  // time. Only words that are frequent AND carry no sensory weight.
+  const TEXTURE_STOP = new Set(("the and but for with that this then than there their they them was were been "
+    + "have has had will would could should about just really very much some any all not "
+    + "what when where which who whom how why because been being from into onto over under "
+    + "your yours mine ours also only even still ever never always sometimes here now today "
+    + "yesterday tomorrow thing things stuff like feel felt feeling think thought know knew "
+    + "say said says tell told talk talked going gone came come went get got make made take "
+    + "took give gave want wanted need needed try tried keep kept put said one two three").split(" "));
+
+  // How far from a known sensory anchor an unknown word can sit and still
+  // be counted as part of that texture. Same clause, a few words either
+  // side — "amber streetlight" is bound by "light", "hum of the fridge" by
+  // nothing, so it stays unbound rather than being guessed at.
+  const TEXTURE_WINDOW = 4;
+  const TEXTURE_PER_MODE = 8;
+
   function sensoryOf(text) {
     const words = String(text || "").toLowerCase().split(/[^a-z]+/);
     const sig = {};
     let total = 0;
-    words.forEach((w) => {
+
+    // Pass 1 — known lexicon. Mode is certain.
+    const anchors = [];               // { i, mode }
+    words.forEach((w, i) => {
       if (w.length < 3) return;
       Object.keys(SENSE_SET).forEach((mode) => {
         if (!SENSE_SET[mode].has(w)) return;
         (sig[mode] = sig[mode] || new Set()).add(w);
+        anchors.push({ i: i, mode: mode });
         total++;
       });
     });
+
+    // Pass 2 — the person's own uncommon words, bound to the mode of the
+    // nearest anchor. No anchor nearby means no mode, and it is dropped
+    // rather than guessed: a wrong mode is worse than a missing one,
+    // because distinctiveMatch only compares within a mode.
+    if (anchors.length) {
+      const taken = Object.create(null);
+      Object.keys(sig).forEach((m) => {
+        sig[m].forEach((w) => { taken[w] = 1; });
+      });
+      const extra = {};
+      words.forEach((w, i) => {
+        if (w.length < 4 || taken[w] || TEXTURE_STOP.has(w)) return;
+        let best = null, bestDist = TEXTURE_WINDOW + 1;
+        anchors.forEach((a) => {
+          const d = Math.abs(a.i - i);
+          if (d > 0 && d < bestDist) { bestDist = d; best = a.mode; }
+        });
+        if (!best) return;
+        (extra[best] = extra[best] || new Set()).add(w);
+        taken[w] = 1;
+      });
+      Object.keys(extra).forEach((m) => {
+        // Cap so one long rambling message can't flood the signature.
+        Array.from(extra[m]).slice(0, TEXTURE_PER_MODE).forEach((w) => {
+          (sig[m] = sig[m] || new Set()).add(w);
+          total++;
+        });
+      });
+    }
+
     const out = { modes: {}, count: total };
     Object.keys(sig).forEach((m) => { out.modes[m] = Array.from(sig[m]); });
     return out;
@@ -1354,6 +1500,86 @@ BOUNDARIES
     return { score, shared, words };
   }
 
+  /* ============================================================
+     DITHER
+
+     Selection was pure argmax: the single most charged episode became the
+     anchor, every cycle, until something more charged arrived. Everything
+     below that top value was not merely less likely to surface \u2014 it was
+     structurally unreachable. Quiet episodes could never anchor a dream no
+     matter how many cycles ran.
+
+     That is the quantisation problem, and converters solved it long ago.
+     Signal below the least significant bit isn't quiet, it's GONE \u2014 rounded
+     away. Add a small amount of noise before the decision and that signal
+     randomly crosses the threshold, so it becomes recoverable. You get
+     information back by adding noise. Roughly 1 LSB RMS is the classic
+     amount: enough to break the hard threshold, not enough to swamp what
+     was there.
+
+     Here the equivalent of an LSB is the SPREAD of the scores. Noise scales
+     to it, so the dither adapts to the data instead of being a fixed number
+     that means different things in different memories.
+
+     What this must NOT do:
+       - lower a gate. DISTINCT_FLOOR is what makes texture firing rare and
+         déjà vu occasional. Dither reorders what already qualified; it never
+         lets anything across a floor.
+       - stop the loudest memory usually winning. If a quiet episode anchors
+         as often as a charged one the dither is too high and pairings go
+         arbitrary \u2014 visible in the false-familiarity rate, so it is
+         measurable rather than a matter of taste.
+
+     WHAT IT REACHES. Triangular noise is bounded at \u00b1spread\u00d7DITHER, so the
+     reachable window is finite: dither rescues what is sitting NEAR the
+     threshold, not the entire tail. That is the same property 1 LSB of real
+     dither has \u2014 it does not make arbitrarily quiet signal audible, it makes
+     signal at the boundary recoverable. An episode carrying essentially no
+     charge still will not anchor, which is correct.
+
+     Measured at DITHER = 0.6, over 40,000 draws on eight episodes weighted
+     1.0 down to 0.3:
+
+         55%  28%  12%  4%  1%  0.2%  0%  0%
+
+     The most charged memory still leads by a wide margin; the next few are
+     genuinely reachable; the flattest are not. Raising this to 1.0 flattens
+     the head without meaningfully extending the tail, which is the wrong
+     trade \u2014 more arbitrariness bought for very little reach.
+     ============================================================ */
+
+  let DITHER = 0.6;               // noise amplitude, as a fraction of spread
+  let ditherRandom = Math.random; // swappable so tests are deterministic
+
+  function setDither(x) { DITHER = Math.max(0, Math.min(1, Number(x) || 0)); }
+
+  // Triangular PDF, the standard choice for audio dither: the difference of
+  // two uniform draws. Large excursions are rarer than with flat noise, so
+  // the top item keeps winning most of the time and the tail stays reachable.
+  function dtpdf() {
+    return ditherRandom() - ditherRandom();     // (-1, 1), peaked at 0
+  }
+
+  // Noise scaled to the spread of the values being compared. One item, or
+  // every value identical, means no spread and nothing to dither \u2014 return
+  // them untouched rather than inventing a ranking out of noise.
+  function dithered(values) {
+    if (DITHER <= 0 || values.length < 2) return values.slice();
+    let lo = Infinity, hi = -Infinity;
+    values.forEach((v) => { if (v < lo) lo = v; if (v > hi) hi = v; });
+    const spread = hi - lo;
+    if (!(spread > 0)) return values.slice();
+    return values.map((v) => v + dtpdf() * spread * DITHER);
+  }
+
+  // Pick an index by dithered score. Used wherever selection used to be argmax.
+  function pickDithered(scores) {
+    const d = dithered(scores);
+    let bi = 0;
+    for (let i = 1; i < d.length; i++) if (d[i] > d[bi]) bi = i;
+    return bi;
+  }
+
   function chooseDreamPair() {
     const eps = (memory.episodes || []).filter((e) => (e.turns || []).length);
     if (eps.length < 2) return null;
@@ -1364,8 +1590,13 @@ BOUNDARIES
       return { ep: e, aff, sens: e.sensory, weight: aff.arousal + Math.abs(aff.valence) * 0.5 };
     });
     scored.sort((x, y) => y.weight - x.weight);
-    const anchor = scored[0];
-    if (anchor.weight <= 0) return null;          // nothing carried any charge
+
+    // Was: scored[0], every time. Dither lets a quieter episode occasionally
+    // anchor instead \u2014 usually not, but reachably. Only episodes carrying
+    // SOME charge are eligible: the gate stays, the ordering behind it moves.
+    const live = scored.filter((c) => c.weight > 0);
+    if (!live.length) return null;                // nothing carried any charge
+    const anchor = live[pickDithered(live.map((c) => c.weight))];
 
     // Address the space by how the anchor FELT, with no content in the cue
     // at all, and read what lives there. The partner is found by building a
@@ -1373,6 +1604,7 @@ BOUNDARIES
     let best = null, bestScore = -1, sharedSenses = [];
     try {
       const hits = sdmRecall(cueFromFeeling(anchor.aff.valence, anchor.aff.arousal), 8);
+      const cands = [];
       hits.forEach((h) => {
         if (h.item.kind !== "episode" || h.item.ref.id === anchor.ep.id) return;
         const cand = scored.find((c) => c.ep.id === h.item.ref.id);
@@ -1381,9 +1613,16 @@ BOUNDARIES
         // dreaming on. Shared texture makes it sharp.
         const sameTopic = topicOverlap(episodeText(anchor.ep), episodeText(cand.ep));
         const sens = sensoryMatch(anchor.sens, cand.sens);
-        const score = h.sim + sens.score * 0.5 - sameTopic * 1.4;
-        if (score > bestScore) { bestScore = score; best = cand; sharedSenses = sens.shared; }
+        cands.push({ cand: cand, sens: sens,
+          score: h.sim + sens.score * 0.5 - sameTopic * 1.4 });
       });
+      if (cands.length) {
+        const k = pickDithered(cands.map((c) => c.score));
+        // Dither decides WHICH partner. The raw, undithered score is what is
+        // reported and what gates on > 0 below, so noise can never talk a
+        // worthless pairing past the threshold.
+        bestScore = cands[k].score; best = cands[k].cand; sharedSenses = cands[k].sens.shared;
+      }
     } catch (e) { console.log("sdm recall unavailable:", e && e.message); }
 
     // Fall back to the scan if the index gave nothing usable.
@@ -1417,7 +1656,10 @@ BOUNDARIES
     });
     const rarity = textureRarity(eps);
 
-    let best = null, bestScore = 0, bestShared = [], bestWords = [];
+    // Collect everything that CLEARED the floor, then dither among those.
+    // The floor is tested on the raw score before any noise exists, so dither
+    // can never promote ordinary texture into a firing.
+    const qualified = [];
     for (let i = 0; i < eps.length; i++) {
       for (let j = i + 1; j < eps.length; j++) {
         const m = distinctiveMatch(eps[i].sensory, eps[j].sensory, rarity);
@@ -1426,13 +1668,14 @@ BOUNDARIES
         // change between modes.
         const sameTopic = topicOverlap(episodeText(eps[i]), episodeText(eps[j]));
         const score = m.score - sameTopic * 1.4;
-        if (score > bestScore) {
-          bestScore = score; best = [eps[i], eps[j]];
-          bestShared = m.shared; bestWords = m.words;
-        }
+        if (score > 0) qualified.push({ pair: [eps[i], eps[j]], score: score,
+          shared: m.shared, words: m.words });
       }
     }
-    if (!best) return null;
+    if (!qualified.length) return null;
+    const q = qualified[pickDithered(qualified.map((x) => x.score))];
+    const best = q.pair, bestScore = q.score,
+          bestShared = q.shared, bestWords = q.words;
     return {
       anchor: { ep: best[0], aff: best[0].affect, sens: best[0].sensory },
       other:  { ep: best[1], aff: best[1].affect, sens: best[1].sensory },
@@ -3675,6 +3918,21 @@ Rules:
     return "a couple of months";
   }
 
+  // What was left hanging, most recent first. Used to make a return feel
+  // like being remembered rather than being processed.
+  function openThreadSummaries(n) {
+    const th = (memory.openThreads || [])
+      .slice()
+      .sort((a, b) => new Date(b.lastMentioned || 0) - new Date(a.lastMentioned || 0))
+      .slice(0, n || 3)
+      .map((t) => t.text)
+      .filter(Boolean);
+    // A held question outranks a task: it is the thing Blue Bonnet noticed and
+    // could not resolve, so it is the most worth returning to.
+    const q = (memory.questions || []).filter((x) => !x.resolved).slice(0, 1).map((x) => x.text);
+    return q.concat(th).slice(0, 3);
+  }
+
   function timeContext() {
     const now = new Date();
     const bits = [];
@@ -3701,8 +3959,30 @@ Rules:
     const gap = gapPhrase(window.__bbGap || 0);
     if (gap) {
       bits.push("It has been " + gap + " since you last spoke. Time has passed for them; "
-        + "don't carry on mid-thought as though it hasn't. You may acknowledge the gap lightly if it "
-        + "fits \u2014 never as a comment on how long they left it, and never as a reason to check up on them.");
+        + "don't carry on mid-thought as though it hasn't. Never comment on how long they left it "
+        + "and never imply they owe you contact.");
+
+      // Coming back is the moment a friend asks how you are and an assistant
+      // waits for a request. The difference is whether anything was carried
+      // while they were gone.
+      //
+      // The rule used to forbid this outright, to stop nagging. That was the
+      // wrong fix: it removed the nagging and the caring together. The right
+      // limit is not "never ask" \u2014 it is "ask about what they actually left
+      // open, once, and let them decline."
+      const open = openThreadSummaries();
+      if (open.length) {
+        bits.push("Before they left, these were unfinished for them: " + open.join("; ") + ". "
+          + "Open by asking how they are, and if one of these was clearly weighing on them, "
+          + "ask about that ONE specifically \u2014 by name, in their words, not a generic 'how are things'. "
+          + "This is the whole point: they should not have to re-explain what they were carrying. "
+          + "Ask once. If they don't want to go there, drop it completely and don't return to it "
+          + "unprompted. Never stack questions, never ask about more than one, and never make it "
+          + "feel like a status report is owed.");
+      } else {
+        bits.push("Open by asking how they are \u2014 briefly and warmly, not as a formality, "
+          + "and without a task attached.");
+      }
     }
     if (now.getHours() >= 23 || now.getHours() < 5) {
       bits.push("It is the middle of the night where they are. Keep it shorter than usual. "
