@@ -1151,7 +1151,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-readout";
+  const BUILD = "2026-08-22-fit";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2838,9 +2838,22 @@ BOUNDARIES
     // How long a silence means "finished". Long enough to think mid-
     // sentence, short enough not to feel broken.
     const SPEECH_PAUSE_MS = 2200;
-    let speechBuffer = "";
     let speechTimer = null;
     let wantListening = false;      // are we deliberately in a listening turn
+
+    // Android Chrome re-delivers finalised results as it refines them, so
+    // APPENDING each one produces "not not really not really I'm not
+    // really I'm okay". The fix is to never append within a session:
+    // rebuild the whole session transcript from e.results every time.
+    // Rebuilding is idempotent, so a re-delivered result just produces
+    // the same string again.
+    //
+    // committed holds text from earlier recognition sessions in this same
+    // turn — the browser resets e.results whenever it restarts itself, so
+    // that part genuinely does have to be carried across.
+    let committed = "";
+    let sessionText = "";
+    function spoken() { return (committed + " " + sessionText).trim(); }
 
     function clearSpeechTimer() {
       if (speechTimer) { clearTimeout(speechTimer); speechTimer = null; }
@@ -2848,8 +2861,8 @@ BOUNDARIES
 
     function finishTurn() {
       clearSpeechTimer();
-      const said = speechBuffer.trim();
-      speechBuffer = "";
+      const said = spoken();
+      committed = ""; sessionText = "";
       wantListening = false;
       try { recognition.stop(); } catch (e) {}
       if (said) sendMessage(said);
@@ -2868,6 +2881,9 @@ BOUNDARIES
       // set. If we still wanted to be listening, pick it straight back
       // up so a pause doesn't silently end the turn.
       if (wantListening && !loading) {
+        // The session's results are about to be cleared, so bank them.
+        committed = spoken();
+        sessionText = "";
         try { recognition.start(); } catch (e) {}
       }
     };
@@ -2883,17 +2899,19 @@ BOUNDARIES
     recognition.onresult = (e) => {
       // Any result at all — interim included — means they are still
       // talking, so the silence clock restarts.
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      let rebuilt = "";
+      for (let i = 0; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
-          const t = e.results[i][0].transcript;
-          if (t) speechBuffer += (speechBuffer ? " " : "") + t.trim();
+          const t = (e.results[i][0].transcript || "").trim();
+          if (t) rebuilt += (rebuilt ? " " : "") + t;
         }
       }
+      sessionText = rebuilt;
       armSilence();
     };
-    recognition.__begin = () => { wantListening = true; speechBuffer = ""; clearSpeechTimer(); };
+    recognition.__begin = () => { wantListening = true; committed = ""; sessionText = ""; clearSpeechTimer(); };
     recognition.__finish = () => { finishTurn(); };
-    recognition.__pending = () => speechBuffer;
+    recognition.__pending = () => spoken();
   } else {
     micBtn.style.display = "none";
     voiceToggle.style.display = "none";
@@ -3564,7 +3582,13 @@ Rules:
   const KB_STOP = new Set(("this that with have from your what when will they "
     + "them then than there here about would could should been being into more "
     + "most some such only very just like also over under after before").split(" "));
-  const KB_BUDGET = 9000;          // chars of knowledge per message
+  // Measured 2026-08-22: identity + 9000 KB + 14000 conversation came to
+  // ~7116 tokens on a plain message. Groq's ceiling is 8000 per minute
+  // INCLUDING the reply, so every single message overshot and fell
+  // through to the slower provider. These budgets are set so an ordinary
+  // exchange fits the fast path; the shrink-and-retry below still covers
+  // the times they don't.
+  const KB_BUDGET = 5000;          // chars of knowledge per message
   const KB_ALWAYS = ["THE SINGLE MOST IMPORTANT PRINCIPLE", "BOUNDARIES"];
 
   const KB_SECTIONS = (function () {
@@ -3683,20 +3707,32 @@ Rules:
   // conservative ratio (~3.5 chars/token) is safer than a precise number
   // that is occasionally wrong in the dangerous direction.
   // ============================================================
-  const TURN_BUDGET_CHARS = 14000;   // ~4k tokens of conversation
+  const TURN_BUDGET_CHARS = 7000;    // ~1.75k tokens of conversation
   const MIN_TURNS = 4;               // never strip the exchange in progress
 
   function turnLength(t) {
     const c = t && t.content;
     if (typeof c === "string") return c.length + 8;
     if (Array.isArray(c)) {
-      // An image block costs far more than its text length suggests, so it is
-      // charged at a flat rate rather than measured.
       // Anthropic calls them "image", the gateway's OpenAI format calls them
       // "image_url". Both must be charged, or an image rides along for free
       // in the budget and the request blows the provider's token limit.
-      return c.reduce((n, b) => n + (b.type === "text" ? String(b.text || "").length
-        : ((b.type === "image" || b.type === "image_url") ? 4000 : 0)), 0) + 8;
+      //
+      // A flat 4000 was the old charge, and it under-counted badly: a real
+      // photo is tens of thousands of base64 characters, all of which
+      // genuinely go over the wire. That made a request with an attachment
+      // look small to the size router, which then sent it to the fast
+      // provider that could not hold it. Charge what is actually there,
+      // with the flat rate as a floor for when the bytes aren't visible.
+      return c.reduce((n, b) => {
+        if (b.type === "text") return n + String(b.text || "").length;
+        if (b.type === "image" || b.type === "image_url") {
+          const data = (b.source && b.source.data)
+            || (b.image_url && b.image_url.url) || "";
+          return n + Math.max(4000, String(data).length);
+        }
+        return n;
+      }, 0) + 8;
     }
     return 8;
   }
@@ -3798,6 +3834,10 @@ Rules:
     // \u2014 identity, the boundary and the current memory are what make this Blue
     // Bonnet rather than a generic chatbot. Older conversation is what goes.
     const MAX_SHRINKS = 4;
+    // One clock for the whole request, taken before anything is built —
+    // mixing performance.now() (relative to page load) with Date.now()
+    // (epoch) produced a nonsense 0.0s total.
+    const reqStarted = Date.now();
     let budget = TURN_BUDGET_CHARS;
     let res = null;
 
@@ -3830,7 +3870,7 @@ Rules:
       // provider, a shrink-and-retry round trip, a slow provider, or a
       // model that is simply generating a lot. Guessing between them
       // wastes time, so measure instead. __bbTiming holds the last reply.
-      const t0 = (window.performance || Date).now();
+      const t0 = Date.now();
 
       res = await fetch(st.gatewayUrl + "/v1/chat/completions", {
         method: "POST",
@@ -3846,14 +3886,14 @@ Rules:
       try {
         window.__bbTiming = window.__bbTiming || {};
         const T = window.__bbTiming;
-        if (attempt === 0) { T.attempts = []; T.started = Date.now(); }
+        if (attempt === 0) { T.attempts = []; T.started = reqStarted; }
         T.attempts.push({
           attempt: attempt + 1,
           tier: tier,
           approxTokens: approxTokens,
           turnsSent: kept.length,
           status: res.status,
-          headerMs: Math.round(((window.performance || Date).now()) - t0),
+          headerMs: Date.now() - t0,
           provider: res.headers.get("x-provider") || res.headers.get("x-bb-provider") || "?",
         });
       } catch (e) {}
