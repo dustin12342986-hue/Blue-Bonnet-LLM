@@ -1151,7 +1151,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-revert";
+  const BUILD = "2026-08-22-budgets-back";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -3588,7 +3588,7 @@ Rules:
   // through to the slower provider. These budgets are set so an ordinary
   // exchange fits the fast path; the shrink-and-retry below still covers
   // the times they don't.
-  const KB_BUDGET = 5000;          // chars of knowledge per message
+  const KB_BUDGET = 9000;          // chars of knowledge per message
   const KB_ALWAYS = ["THE SINGLE MOST IMPORTANT PRINCIPLE", "BOUNDARIES"];
 
   const KB_SECTIONS = (function () {
@@ -3707,7 +3707,7 @@ Rules:
   // conservative ratio (~3.5 chars/token) is safer than a precise number
   // that is occasionally wrong in the dangerous direction.
   // ============================================================
-  const TURN_BUDGET_CHARS = 7000;    // ~1.75k tokens of conversation
+  const TURN_BUDGET_CHARS = 14000;   // ~4k tokens of conversation
   const MIN_TURNS = 4;               // never strip the exchange in progress
 
   function turnLength(t) {
