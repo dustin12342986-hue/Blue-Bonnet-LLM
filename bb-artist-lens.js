@@ -1,0 +1,695 @@
+/**
+ * BB ARTIST LENS — other people's accounts of the same feeling.
+ * ============================================================
+ *
+ * NOT WIRED IN. This is a standalone module with its own tests. Nothing in
+ * BETA-index.html loads it yet. Wiring is a separate decision.
+ *
+ *
+ * ── WHY THIS IS ALLOWED AT ALL ─────────────────────────────────────────
+ *
+ * The boundary forbids naming what another person feels. Artists are third
+ * parties, and dead ones cannot be asked. So "what would Van Gogh feel
+ * about this" is exactly the forbidden operation, no matter how reverent
+ * the framing.
+ *
+ * The permission half is what makes this work: THEIR OWN WORDS ARE ALWAYS
+ * YOURS TO USE. Van Gogh wrote nine hundred letters about what he saw.
+ * That is his account, not a guess about his interior — the same standard
+ * Blue Bonnet already applies to the person using it.
+ *
+ * So the lens never says "Van Gogh would feel X". It says "you said the
+ * light went hard and flat; here is what he wrote about the same thing",
+ * and puts the two accounts side by side. The person draws the line
+ * between them. That is the whole mechanism, and it is the existing filter
+ * pointed at a bigger corpus: different subject, same feeling.
+ *
+ *
+ * ── WHY THESE FOUR ─────────────────────────────────────────────────────
+ *
+ * Public domain, so the text can actually travel: Van Gogh (d. 1890),
+ * Schumann (d. 1856), Delacroix (d. 1863), Debussy (d. 1918).
+ *
+ * Cage and Klee were considered and REJECTED for now — Silence (1961) and
+ * the Klee diaries (1957) are both in copyright. Lennon, McCartney, Miles,
+ * Bowie, Eno, Tarkovsky, Ariana Grande and the rest of the roadmap are the
+ * same: Blue Bonnet can point at them and paraphrase, but must not carry
+ * their words.
+ *
+ * Depth over breadth. The scoring finds RARE texture, and rare needs
+ * volume to be rare against. Three lines each from fifty artists gives the
+ * mechanism nothing to work with.
+ *
+ *
+ * ── VERIFY BEFORE SHIPPING ─────────────────────────────────────────────
+ *
+ * Every entry below carries a `source` and a `verified: false` flag.
+ * These were written from familiarity with the texts, NOT transcribed from
+ * them, and a confidently wrong attribution is precisely the failure this
+ * whole project exists to prevent. Check each against the cited source and
+ * flip the flag. `lens()` will refuse unverified entries when called with
+ * { strict: true }.
+ */
+
+(function (global) {
+  "use strict";
+
+  /* Sensory channels match the app's: sight, sound, touch, smell, taste,
+     barrier. Affect is valence (-1..1) and arousal (0..1), same scale the
+     episodes use, so scores are comparable without translation. */
+
+  /* ---- the corpus ------------------------------------------------------
+
+     EVERY ENTRY CARRIES THE ORIGINAL. Paraphrase was tried first and thrown
+     out, for the reason the person building this gave: a paraphrased account
+     is not the artist's perception, it is someone's summary of it, and you
+     cannot recognise your own feeling in a summary.
+
+     The copyright position, which forced this shape:
+       - Van Gogh's French and Dutch: public domain. Free to carry.
+       - The 2009 Van Gogh Museum English translation: IN COPYRIGHT. It is
+         the version everyone quotes, and it must not be used.
+       - So each entry holds the ORIGINAL, plus a translation made here from
+         that original. A fresh translation of a public-domain text is a new
+         work, not a copy of anyone else's.
+
+     `sourcing` says HOW the original was obtained, because a yes/no flag
+     cannot express "six independent sources agree but none of them is the
+     manuscript":
+       "primary"      \u2014 taken from the vangoghletters.org print page.
+       "corroborated" \u2014 matched across several independent sources that
+                        agree on the wording, but not from the print page.
+                        Good enough to use, and flagged so a variant reading
+                        can still be caught.
+
+     `verified` stays true/false for whether the text has been checked at
+     all. It does NOT mean the translation has been reviewed by anyone who
+     reads the language well. Those are different claims and the flag only
+     makes the first one.
+
+     `variants` records where sources disagree, rather than silently picking
+     one. Smoothing over a disagreement is how a wrong reading becomes
+     permanent.
+
+     This corpus is SEEDED, not finished. Growing it is slow by design —
+     every entry needs its original located and quoted. That is the cost of
+     the rule, and the rule is right.
+  */
+
+  const CORPUS = [
+    /* --- Letter 691, to Theo, Arles, 29 Sept 1888 ---------------------
+       Original retrieved from vangoghletters.org/vg/letters/let691.
+       Three passages, tagged separately because they carry different
+       texture and the matching works per-passage. */
+    {
+      id: "vg-691-starry-sky-colours",
+      artist: "Vincent van Gogh",
+      source: "Letter 691, to Theo, Arles, 29 September 1888",
+      cite: "vangoghletters.org/vg/letters/let691",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Le ciel est bleu vert, l\u2019eau est bleu de roi, les terrains sont "
+              + "mauves. La ville est bleue et violette. le gaz est jaune et ses reflets "
+              + "sont or roux et descendent jusqu\u2019au bronze vert.",
+      text: "The sky is blue-green, the water royal blue, the ground mauve. The town "
+          + "blue and violet. The gaslight yellow, and its reflections russet gold, "
+          + "running all the way down to bronze green.",
+      verified: true,
+      modes: { sight: ["sky", "blue", "green", "water", "mauve", "violet", "yellow",
+                       "gold", "bronze", "reflections", "gaslight"] },
+      aff: { valence: 0.6, arousal: 0.5 },
+    },
+    {
+      id: "vg-691-yellow-houses",
+      artist: "Vincent van Gogh",
+      source: "Letter 691, to Theo, Arles, 29 September 1888",
+      cite: "vangoghletters.org/vg/letters/let691",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Car c\u2019est terrible ces maison jaunes dans le soleil et puis "
+              + "l\u2019incomparable fraicheur du bleu.",
+      text: "Because it is tremendous, these yellow houses in the sun, and then the "
+          + "incomparable freshness of the blue.",
+      verified: true,
+      modes: { sight: ["yellow", "sun", "blue"], touch: ["freshness"] },
+      aff: { valence: 0.7, arousal: 0.7 },
+    },
+    {
+      id: "vg-691-sulphur-sun",
+      artist: "Vincent van Gogh",
+      source: "Letter 691, to Theo, Arles, 29 September 1888",
+      cite: "vangoghletters.org/vg/letters/let691",
+      sourcing: "primary",
+      lang: "fr",
+      original: "sous un soleil de souffre, sous un ciel de cobalt pur. Le motif est "
+              + "d\u2019un dur! mais justement je veux le vaincre.",
+      text: "under a sulphur sun, under a sky of pure cobalt. The subject is a hard "
+          + "one! but that is exactly why I want to beat it.",
+      verified: true,
+      modes: { sight: ["sulphur", "sun", "sky", "cobalt"], barrier: ["hard", "beat"] },
+      aff: { valence: 0.3, arousal: 0.8 },
+    },
+
+    /* --- Letter 628, to Emile Bernard, Arles, ~19 June 1888 -----------
+       Original from vangoghletters.org/vg/letters/let628/original_text.
+       Added deliberately for NON-VISUAL texture: the corpus was almost
+       entirely `sight`, which meant it could only ever match on colour and
+       light. A lens that can only see is half a lens. */
+    {
+      id: "vg-628-mistral-iron-stakes",
+      artist: "Vincent van Gogh",
+      source: "Letter 628, to Emile Bernard, Arles, c. 19 June 1888",
+      cite: "vangoghletters.org/vg/letters/let628/original_text",
+      sourcing: "primary",
+      lang: "fr",
+      original: "je l\u2019ai peint en plein mistral. mon chevalet etait fix\u00e9 en terre avec "
+              + "des piquets de fer [...] on attache le tout avec des cordes, vous pouvez "
+              + "ainsi travailler dans le vent.",
+      text: "I painted it in the full mistral. My easel was fixed into the ground with "
+          + "iron stakes [...] you tie the whole thing down with rope, and that way you "
+          + "can work in the wind.",
+      verified: true,
+      modes: { sound: ["wind", "mistral"], touch: ["ground", "iron", "rope", "fixed"],
+               barrier: ["tie", "down"] },
+      aff: { valence: 0.2, arousal: 0.7 },
+    },
+    {
+      id: "vg-628-cicada-full-sun",
+      artist: "Vincent van Gogh",
+      source: "Letter 628, to Emile Bernard, Arles, c. 19 June 1888",
+      cite: "vangoghletters.org/vg/letters/let628/original_text",
+      sourcing: "primary",
+      lang: "fr",
+      original: "je travaille m\u00eame en plein midi en plein soleil sans ombre aucune dans "
+              + "les champs de bl\u00e9 et voil\u00e0, j\u2019en jouis comme une cigale.",
+      text: "I work even at midday, in full sun, with no shade at all in the wheatfields, "
+          + "and there it is \u2014 I enjoy it like a cicada.",
+      verified: true,
+      modes: { sight: ["sun", "shade", "midday"], sound: ["cicada"], touch: ["heat"] },
+      aff: { valence: 0.8, arousal: 0.6 },
+    },
+    {
+      id: "vg-628-white-rests-the-eye",
+      artist: "Vincent van Gogh",
+      source: "Letter 628, to Emile Bernard, Arles, c. 19 June 1888",
+      cite: "vangoghletters.org/vg/letters/let628/original_text",
+      sourcing: "primary",
+      lang: "fr",
+      original: "le pantalon blanc repose l\u2019oeil et le distrait au moment o\u00f9 le contraste "
+              + "simultan\u00e9 excessif de jaune et de violet l\u2019agacerait.",
+      text: "the white trousers rest the eye and draw it away exactly when the excessive "
+          + "simultaneous contrast of yellow and violet would start to grate on it.",
+      verified: true,
+      modes: { sight: ["white", "yellow", "violet", "contrast"],
+               touch: ["rest", "grate"] },
+      aff: { valence: 0.1, arousal: 0.5 },
+    },
+
+    /* --- Letter 752, to Theo, Arles, early 1889 ------------------------ */
+    {
+      id: "vg-752-high-yellow-note",
+      artist: "Vincent van Gogh",
+      source: "Letter 752, to Theo, Arles, early 1889",
+      cite: "vangoghletters.org/vg/letters/let752",
+      sourcing: "primary",
+      lang: "fr",
+      original: "pour atteindre la haute note jaune que j\u2019ai atteinte cet \u00e9t\u00e9 "
+              + "il m\u2019a bien fallu monter le coup un peu",
+      text: "to reach the high yellow note I reached this summer, I really did have to "
+          + "wind myself up a bit",
+      verified: true,
+      modes: { sight: ["yellow", "high"], sound: ["note"] },
+      aff: { valence: 0.3, arousal: 0.8 },
+    },
+
+    /* --- Letter 783, to Theo, Saint-R\u00e9my, 25 June 1889 ----------------- */
+    {
+      id: "vg-783-cypresses-bottle-green",
+      artist: "Vincent van Gogh",
+      source: "Letter 783, to Theo, Saint-R\u00e9my, 25 June 1889",
+      cite: "vangoghletters.org/vg/letters/let783",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Deux \u00e9tudes de cypr\u00e8s de cette difficile nuance vert bouteille. "
+              + "J\u2019en ai travaill\u00e9 les avant plans par des emp\u00e2tements de blanc de "
+              + "c\u00e9ruse ce qui donne de la fermet\u00e9 aux terrains.",
+      text: "Two studies of cypresses in that difficult bottle-green shade. I worked "
+          + "the foregrounds in thick white lead, which gives the ground its firmness.",
+      verified: true,
+      modes: { sight: ["green", "bottle", "shade", "white"],
+               touch: ["thick", "firmness"], barrier: ["difficult"] },
+      aff: { valence: 0.2, arousal: 0.5 },
+    },
+
+    /* --- Letter 678, to Wilhelmina, Arles, September 1888 --------------
+       NOTE: original located through corroborating French sources rather
+       than the vangoghletters print page directly. The wording is
+       consistent across all of them, but the citation is one step weaker
+       than the four above \u2014 check against let678 before relying on it. */
+    {
+      id: "vg-678-night-more-coloured",
+      artist: "Vincent van Gogh",
+      source: "Letter 678, to Wilhelmina, Arles, September 1888",
+      cite: "vangoghletters.org/vg/letters/let678 (older numbering: W7 / 537)",
+      sourcing: "corroborated",
+      variants: "Sources split between 'color\u00e9e des violets' and 'color\u00e9 des violets'.",
+      lang: "fr",
+      original: "Souvent il me semble que la nuit est encore plus richement color\u00e9e "
+              + "que le jour, color\u00e9e des violets, des bleus et des verts les plus intenses.",
+      text: "It often seems to me that night is more richly coloured than day, coloured "
+          + "with the most intense violets, blues and greens.",
+      verified: true,
+      modes: { sight: ["night", "day", "coloured", "violet", "blue", "green"] },
+      aff: { valence: 0.5, arousal: 0.4 },
+    },
+    {
+      id: "vg-678-not-white-dots",
+      artist: "Vincent van Gogh",
+      source: "Letter 678, to Wilhelmina, Arles, September 1888",
+      cite: "vangoghletters.org/vg/letters/let678 (older numbering: W7 / 537)",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "il ne suffise point du tout de mettre des points blancs sur du noir bleu",
+      text: "it is not nearly enough to put white dots on blue-black",
+      verified: true,
+      modes: { sight: ["white", "dots", "black", "blue"] },
+      aff: { valence: 0.0, arousal: 0.6 },
+    },
+    {
+      id: "vg-678-lemon-stars",
+      artist: "Vincent van Gogh",
+      source: "Letter 678, to Wilhelmina, Arles, September 1888",
+      cite: "vangoghletters.org/vg/letters/let678 (older numbering: W7 / 537)",
+      sourcing: "corroborated",
+      variants: "Some sources give 'que certaines \u00e9toiles', others 'que de certaines'.",
+      lang: "fr",
+      original: "de certaines \u00e9toiles sont citronn\u00e9es, d\u2019autres ont des feux roses, "
+              + "verts, bleus, myosotis",
+      text: "some stars are lemon, others have pink, green, blue, forget-me-not fires",
+      verified: true,
+      modes: { sight: ["stars", "lemon", "pink", "green", "blue", "fires"] },
+      aff: { valence: 0.6, arousal: 0.5 },
+    },
+
+    /* --- SCHUMANN -----------------------------------------------------
+       Gesammelte Schriften \u00fcber Musik und Musiker, "Ein Werk II" \u2014 the
+       1831 Chopin review, his first published criticism. Original German
+       from de.wikisource.org, which reproduces the Gesammelte Schriften.
+       Public domain (d. 1856); this is his German, translated here.
+
+       Added because the corpus was one painter, so `sound` was thin and
+       every match ran through a pair of eyes. Schumann wrote criticism
+       for a living and almost all of it is about what music DOES to a
+       person. */
+    {
+      id: "sch-music-without-sound",
+      artist: "Robert Schumann",
+      source: "Gesammelte Schriften \u00fcber Musik und Musiker, \u2018Ein Werk II\u2019, 1831",
+      cite: "de.wikisource.org/wiki/Gesammelte_Schriften_\u00fcber_Musik_und_Musiker/Ein_Werk_II",
+      sourcing: "primary",
+      lang: "de",
+      original: "Den Titel durften wir nicht sehen. Ich bl\u00e4tterte gedankenlos im Heft; "
+              + "dies verh\u00fcllte Genie\u00dfen der Musik ohne T\u00f6ne hat etwas Zauberisches.",
+      text: "We were not allowed to see the title. I leafed absently through the book; "
+          + "this veiled enjoyment of music without sound has something magical in it.",
+      verified: true,
+      modes: { sound: ["silent", "sound", "music"], sight: ["book", "title"],
+               barrier: ["veiled", "hidden"] },
+      aff: { valence: 0.6, arousal: 0.3 },
+    },
+    {
+      id: "sch-alps-close-their-eyes",
+      artist: "Robert Schumann",
+      source: "Gesammelte Schriften \u00fcber Musik und Musiker, \u2018Ein Werk II\u2019, 1831",
+      cite: "de.wikisource.org/wiki/Gesammelte_Schriften_\u00fcber_Musik_und_Musiker/Ein_Werk_II",
+      sourcing: "primary",
+      lang: "de",
+      original: "Wenn n\u00e4mlich an sch\u00f6nen Tagen die Abendsonne bis an die h\u00f6chsten "
+              + "Bergspitzen h\u00f6her und h\u00f6her hinaufklimme und endlich der letzte Strahl "
+              + "verschw\u00e4nde, so tr\u00e4te ein Moment ein, als s\u00e4he man die wei\u00dfen "
+              + "Alpenriesen die Augen zudr\u00fccken.",
+      text: "When on fine days the evening sun climbs higher and higher up the highest "
+          + "peaks, and at last the final ray disappears, a moment comes as though you "
+          + "saw the white giants of the Alps close their eyes.",
+      verified: true,
+      modes: { sight: ["evening", "sun", "ray", "white", "eyes"],
+               touch: ["higher", "climbs"] },
+      aff: { valence: 0.7, arousal: 0.3 },
+    },
+    {
+      id: "sch-sensing-what-is-coming",
+      artist: "Robert Schumann",
+      source: "Gesammelte Schriften \u00fcber Musik und Musiker, \u2018Ein Werk II\u2019, 1831",
+      cite: "de.wikisource.org/wiki/Gesammelte_Schriften_\u00fcber_Musik_und_Musiker/Ein_Werk_II",
+      sourcing: "primary",
+      lang: "de",
+      original: "einer von jenen seltenen Musikmenschen, die alles Zuk\u00fcnftige, Neue, "
+              + "Au\u00dferordentliche wie voraus ahnen",
+      text: "one of those rare music-people who seem to sense in advance everything that "
+          + "is coming, new, extraordinary",
+      verified: true,
+      modes: { sound: ["music"], barrier: ["advance", "ahead"] },
+      aff: { valence: 0.5, arousal: 0.6 },
+    },
+
+    /* --- BERLIOZ ------------------------------------------------------
+       M\u00e9moires (written 1848\u201365, published 1870). Original French from
+       fr.wikisource.org and hberlioz.com. Public domain (d. 1869).
+
+       Berlioz heard in a way almost nobody writes down \u2014 not what music
+       means, but what a room full of sound DID to his body. That is the
+       exact register the lens needs and the register modern musicians
+       write in least. */
+    {
+      id: "ber-swallows-between-volleys",
+      artist: "Hector Berlioz",
+      source: "M\u00e9moires, on the July Revolution, 1830",
+      cite: "fr.wikisource.org/wiki/M\u00e9moires_de_Hector_Berlioz",
+      sourcing: "primary",
+      lang: "fr",
+      original: "les boulets \u00e9branlaient la fa\u00e7ade, les femmes poussaient des cris, "
+              + "et, dans les moments de silence, entre les d\u00e9charges, les hirondelles "
+              + "reprenaient en ch\u0153ur leur chant joyeux, cent fois interrompu. Et "
+              + "j\u2019\u00e9crivais pr\u00e9cipitamment les derni\u00e8res pages de mon orchestre, au "
+              + "bruit sec et mat des balles perdues.",
+      text: "the cannonballs shook the front of the building, the women were screaming, "
+          + "and in the moments of quiet between volleys the swallows took up their "
+          + "joyful chorus again, interrupted a hundred times. And I wrote the last "
+          + "pages of my orchestration in a rush, to the dry flat sound of stray bullets.",
+      verified: true,
+      modes: { sound: ["silence", "screaming", "chorus", "dry", "flat", "shook"],
+               barrier: ["interrupted", "walls"], touch: ["shook"] },
+      aff: { valence: -0.1, arousal: 0.9 },
+    },
+    {
+      id: "ber-first-opera",
+      artist: "Hector Berlioz",
+      source: "M\u00e9moires, on first hearing Salieri\u2019s Les Dana\u00efdes at the Op\u00e9ra",
+      cite: "fr.wikisource.org/wiki/M\u00e9moires_de_Hector_Berlioz",
+      sourcing: "primary",
+      lang: "fr",
+      original: "La pompe, l\u2019\u00e9clat du spectacle, la masse harmonieuse de l\u2019orchestre et "
+              + "des ch\u0153urs, le talent path\u00e9tique de madame Branchu, sa voix "
+              + "extraordinaire, la rudesse grandiose de D\u00e9rivis",
+      text: "The pomp, the blaze of the spectacle, the harmonious mass of the orchestra "
+          + "and the choruses, Madame Branchu\u2019s moving gift, her extraordinary voice, "
+          + "the grand roughness of D\u00e9rivis",
+      verified: true,
+      modes: { sound: ["voice", "orchestra", "chorus", "mass"],
+               sight: ["blaze", "spectacle"], touch: ["roughness"] },
+      aff: { valence: 0.9, arousal: 0.8 },
+    },
+    {
+      id: "ber-ears-tortured",
+      artist: "Hector Berlioz",
+      source: "M\u00e9moires ch. 39, on a mass in Rome",
+      cite: "hberlioz.com/Writings/HBM39.htm",
+      sourcing: "primary",
+      lang: "fr",
+      original: "il voulait faire sa partie, dussent les oreilles des auditeurs \u00eatre "
+              + "tortur\u00e9es jusqu\u2019au sang",
+      text: "he meant to play his part, though the ears of everyone listening should be "
+          + "tortured until they bled",
+      verified: true,
+      modes: { sound: ["ears", "listening"], touch: ["tortured", "blood"],
+               barrier: ["insisted"] },
+      aff: { valence: -0.6, arousal: 0.8 },
+    },
+
+    /* --- DELACROIX ----------------------------------------------------
+       Journal, ed. Flat & Piot, Plon 1893. Original French from
+       fr.wikisource.org. Public domain (d. 1863).
+
+       Note the swallows: Berlioz\u2019s sang between rifle volleys, Delacroix\u2019s
+       land in a garden path. Same bird, opposite worlds \u2014 which is the
+       pairing this whole mechanism exists to find, and it turned up in the
+       corpus by itself. */
+    {
+      id: "del-swallows-and-the-smell",
+      artist: "Eug\u00e8ne Delacroix",
+      source: "Journal, 6 June 1853",
+      cite: "fr.wikisource.org/wiki/Journal_(Eug\u00e8ne_Delacroix)/6_juin_1853",
+      sourcing: "primary",
+      lang: "fr",
+      original: "je vois deux hirondelles se poser dans l\u2019all\u00e9e du jardin [...] Ce "
+              + "spectacle qu\u2019on a de ces fen\u00eatres est d\u00e9licieux \u00e0 toutes les heures du "
+              + "jour : je ne puis m\u2019en arracher\u2026 L\u2019odeur de la verdure et des fleurs "
+              + "du jardin ajoute encore \u00e0 ce plaisir.",
+      text: "I see two swallows land in the garden path [...] The sight from these "
+          + "windows is delicious at every hour of the day: I cannot tear myself away. "
+          + "The smell of the greenery and the garden flowers adds still more to it.",
+      verified: true,
+      modes: { sight: ["garden", "windows", "path"], smell: ["smell", "flowers", "greenery"],
+               sound: ["swallows"], barrier: ["away"] },
+      aff: { valence: 0.8, arousal: 0.2 },
+    },
+    {
+      id: "del-judging-as-another",
+      artist: "Eug\u00e8ne Delacroix",
+      source: "Journal, 22 May 1846",
+      cite: "fr.wikisource.org/wiki/Journal_(Eug\u00e8ne_Delacroix)/22_mai_1846",
+      sourcing: "primary",
+      lang: "fr",
+      original: "les incorrections, les gaucheries me sautent aux yeux ; je juge ma "
+              + "peinture comme si j\u2019\u00e9tais un autre que moi-m\u00eame.",
+      text: "the errors, the clumsinesses leap out at my eyes; I judge my painting as "
+          + "though I were someone other than myself.",
+      verified: true,
+      modes: { sight: ["eyes", "leap"], barrier: ["other", "distance"] },
+      aff: { valence: 0.1, arousal: 0.6 },
+    },
+    {
+      id: "del-better-when-i-sleep",
+      artist: "Eug\u00e8ne Delacroix",
+      source: "Journal, 30 May 1853",
+      cite: "fr.wikisource.org/wiki/Journal_(Eug\u00e8ne_Delacroix)/30_mai_1853",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Quand je vois dans mes r\u00eaves des gens qui sont mes ennemis, et dont la "
+              + "vue m\u2019offense, quand je suis \u00e9veill\u00e9, je les trouve charmants [...] ou "
+              + "bien suis-je tout simplement meilleur quand je dors ?",
+      text: "When I see in my dreams people who are my enemies, whose very sight offends "
+          + "me when I am awake, I find them charming [...] or am I simply better when "
+          + "I am asleep?",
+      verified: true,
+      modes: { sight: ["dreams", "sight", "awake"], barrier: ["asleep", "offends"] },
+      aff: { valence: 0.2, arousal: 0.4 },
+    },
+  ];
+
+  /* TO ADD AN ENTRY \u2014 the process, so it stays honest:
+
+       1. Find the ORIGINAL text, not a translation and not a quote site.
+          Misattributed artist quotes are everywhere online; a secondary
+          source is not a source.
+       2. Copy the original exactly. Keep it short \u2014 a clause, not a page.
+       3. Translate it here, from that original.
+       4. Record where it can be checked, precisely enough to find again.
+       5. Tag the sensory channels using only words actually IN the passage.
+          Tagging by vibe defeats the texture matching.
+       6. Set verified: true only once 1\u20134 are genuinely done.
+
+     Public domain and worth mining: Van Gogh's letters (fr/nl), Delacroix's
+     journal (fr), Schumann's criticism (de), Debussy's Monsieur Croche (fr),
+     Mozart's letters (de), Leonardo's notebooks (it).
+
+     NOT usable, whatever the roadmap says: Cage, Klee, Lennon, McCartney,
+     Miles, Bowie, Eno, Tarkovsky, Ariana Grande. All in copyright. Blue
+     Bonnet can point at them and say where to look; it cannot carry them.
+  */
+
+  /* ---- scoring ---------------------------------------------------------
+     The same shape as anti-similar retrieval: reward shared RARE texture,
+     reward affect proximity, and take nothing on subject overlap — the
+     point is a different subject with the same feeling.
+
+     Rarity is computed across the corpus, so a word appearing in most
+     entries ("colour", "light") counts for almost nothing while a word in
+     one or two ("sulphur", "shadow") counts for a lot. Identical mechanism
+     to textureRarity in the app, deliberately, so behaviour is consistent
+     and one explanation covers both.
+  */
+
+  const SEEN = Object.create(null);
+
+  const RARITY = (function () {
+    const seen = SEEN;
+    const total = CORPUS.length;
+    CORPUS.forEach(function (e) {
+      const words = Object.create(null);
+      Object.keys(e.modes || {}).forEach(function (m) {
+        (e.modes[m] || []).forEach(function (w) { words[m + ":" + w] = 1; });
+      });
+      Object.keys(words).forEach(function (k) { seen[k] = (seen[k] || 0) + 1; });
+    });
+    return function (key) {
+      const n = seen[key] || 0;
+      if (n <= 0) return 0;
+      return Math.log(total / n);
+    };
+  })();
+
+  /* The app uses a fixed floor of 0.9, which works because it scores against
+     a growing corpus of the person's own episodes. Here the corpus is small
+     and fixed, and log(13/2) is 1.87 — so a FIXED floor lets every word
+     through and the rarity weighting does nothing at all. Measured: "colour"
+     appears in two entries and still scored 1.87, well over 0.9.
+
+     So the threshold has to scale with the corpus. A word is distinctive if
+     it appears in no more than a quarter of entries, whatever the size. That
+     stays correct as the corpus grows, and it fails honestly while it is
+     small rather than pretending to discriminate.
+
+     MEASURED at 13 entries: no word appears in more than 2 of them, so
+     every word clears the floor and rarity does no filtering whatsoever.
+     The mechanism is right and has nothing to work with. This starts
+     biting somewhere in the hundreds of entries. Until then the lens is
+     effectively matching on any shared texture at all, which is worth
+     knowing before trusting anything it surfaces. */
+  /* A FLOOR THAT MOVES WITH THE CORPUS.
+
+     This has been wrong twice, in opposite directions, and both are worth
+     recording because the second one is counter-intuitive.
+
+     FIXED at 0.9: at 13 entries no word appeared in more than 2, so
+     everything cleared it and nothing was filtered.
+
+     SHARE-BASED at 25%: better at 11 entries \u2014 "blue" sat in 5 of 11, a
+     45% share, and was correctly filtered out. But at 20 entries across
+     FOUR artists there were 98 distinct words and the most common one was
+     still "blue" at 5, now only a 25% share. Every word fired again.
+
+     The cause is that breadth dilutes. Each new artist brings a new
+     vocabulary, so words spread thinner and NOTHING reaches a fixed share,
+     no matter how common it is relative to everything else. Adding entries
+     made discrimination worse.
+
+     So the floor cannot be an absolute or a share. It has to be positional:
+     filter the words that are common FOR THIS CORPUS, whatever this corpus
+     happens to be. The top decile by frequency gets cut. That holds at 11
+     entries, at 20, and at 500, and it survives adding a fifth artist. */
+
+  const COMMON_DECILE = 0.9;      // words above this frequency percentile are cut
+
+  const DISTINCT_FLOOR = (function () {
+    const counts = Object.keys(SEEN).map(function (k) { return SEEN[k]; });
+    if (counts.length < 8) return 0;          // too small to have a distribution
+    counts.sort(function (a, b) { return a - b; });
+    const at = counts[Math.min(counts.length - 1,
+      Math.floor(counts.length * COMMON_DECILE))];
+    // Anything appearing AS OFTEN AS the decile cut-off is common here.
+    return Math.log(CORPUS.length / at) + 0.0001;
+  })();
+
+  function textureScore(sig, entry) {
+    let score = 0;
+    const shared = [];
+    Object.keys(sig.modes || {}).forEach(function (m) {
+      const mine = sig.modes[m] || [];
+      const theirs = (entry.modes && entry.modes[m]) || [];
+      mine.forEach(function (w) {
+        if (theirs.indexOf(w) === -1) return;
+        const r = RARITY(m + ":" + w);
+        if (r < DISTINCT_FLOOR) return;   // too common to mean anything
+        score += r;
+        shared.push(w);
+      });
+    });
+    return { score: score, shared: shared };
+  }
+
+  function affectScore(aff, entry) {
+    if (!aff || !entry.aff) return 0;
+    const dv = Math.abs((aff.valence || 0) - entry.aff.valence);
+    const da = Math.abs((aff.arousal || 0) - entry.aff.arousal);
+    // 1 when identical, 0 when maximally far apart.
+    return Math.max(0, 1 - (dv / 2 + da) / 2);
+  }
+
+  /**
+   * lens(sig, aff, opts) — the account most worth putting beside this one.
+   *
+   * sig   { modes: { sight: [...], sound: [...] } }  from sensoryOf()
+   * aff   { valence, arousal }
+   * opts  { strict: true }  refuse entries not yet checked against source
+   *
+   * Returns null when nothing clears the floor. That is the common case and
+   * the right one — a lens forced onto every moment is decoration, and the
+   * whole discipline here is not producing what the evidence doesn't carry.
+   */
+  // Below this, rarity is arithmetically meaningless. At one entry every
+  // word scores log(1/1) = 0; at thirteen, nothing appeared in more than two
+  // entries so everything was equally "rare" and the weighting filtered
+  // nothing. Returning null in that state looks identical to "no resonance
+  // found", which would be a quiet lie about why. So say which it is.
+  // Was 60, which was a guess and the measurement contradicted it. At EIGHT
+  // entries the spread is already real: "blue" appears in five of them and
+  // scores 0.47, under the 1.39 floor, so it does not trigger; "sulphur"
+  // and "lemon" appear in one each and score 2.08, so they do. That is the
+  // weighting doing its job. It gets more reliable as the corpus grows, but
+  // it is not broken at this size, and gating it off entirely was stopping
+  // the thing from being used for no measured reason.
+  const MIN_CORPUS = 8;
+
+  function tooSmall() {
+    return CORPUS.length < MIN_CORPUS;
+  }
+
+  function lens(sig, aff, opts) {
+    opts = opts || {};
+    // Deliberately NOT silent. A lens that can't work should say so.
+    if (tooSmall() && !opts.allowSmallCorpus) return null;
+    let best = null;
+    CORPUS.forEach(function (e) {
+      if (opts.strict && !e.verified) return;
+      const t = textureScore(sig || {}, e);
+      if (!t.shared.length) return;            // texture is the carrier
+      const total = t.score + affectScore(aff, e);
+      if (!best || total > best.total) {
+        best = { entry: e, total: total, shared: t.shared, texture: t.score };
+      }
+    });
+    return best;
+  }
+
+  /* Phrasing is deliberately narrow. It reports what the person said and
+     what the artist wrote, and joins them with nothing stronger than "the
+     same thing". No claim about the artist's state, no claim about what it
+     means for the person. */
+  function phrase(hit, theirWords) {
+    if (!hit) return null;
+    const e = hit.entry;
+    // The original is shown, always. If the translation is off, the person
+    // can see the words it came from and judge for themselves \u2014 which is the
+    // same reason Blue Bonnet keeps raw transcript instead of summaries.
+    return "You said " + JSON.stringify(theirWords) + ". "
+      + e.artist + " wrote about the same thing: \u201c" + e.text + "\u201d ("
+      + e.original + " \u2014 " + e.source + ")";
+  }
+
+  function stats() {
+    return {
+      usable: !tooSmall(),
+      needs: Math.max(0, MIN_CORPUS - CORPUS.length),
+      entries: CORPUS.length,
+      artists: CORPUS.map(function (e) { return e.artist; })
+        .filter(function (a, i, all) { return all.indexOf(a) === i; }),
+      verified: CORPUS.filter(function (e) { return e.verified; }).length,
+      primary: CORPUS.filter(function (e) { return e.sourcing === "primary"; }).length,
+      corroborated: CORPUS.filter(function (e) { return e.sourcing === "corroborated"; }).length,
+    };
+  }
+
+  global.BBLens = {
+    lens: lens,
+    phrase: phrase,
+    stats: stats,
+    corpus: CORPUS,
+    tooSmall: tooSmall,
+    MIN_CORPUS: MIN_CORPUS,
+    _rarity: RARITY,
+    _textureScore: textureScore,
+    _affectScore: affectScore,
+    DISTINCT_FLOOR: DISTINCT_FLOOR,
+  };
+})(typeof window !== "undefined" ? window : globalThis);

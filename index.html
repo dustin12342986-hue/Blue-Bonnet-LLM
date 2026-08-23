@@ -242,6 +242,7 @@
     border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--muted); width: fit-content; }
 </style>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="bb-artist-lens.js"></script>
 </head>
 <body>
   <header>
@@ -1177,7 +1178,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-merge";
+  const BUILD = "2026-08-23-rates";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2625,15 +2626,32 @@ BOUNDARIES
           || x.firstMentioned,
       }));
 
-    ["questions", "rules", "chats"].forEach((k) => {
-      if (local[k] || remote[k]) {
-        out[k] = mergeById(local[k], remote[k], "id", (x, y) => newerOf(x, y, "at"));
-      }
+    // EVERY OTHER LIST, WITHOUT HAVING TO NAME IT.
+    //
+    // The first version of this named the lists explicitly and missed
+    // `dreams`, so a device with an empty journal quietly won over one with
+    // a full one. A list you forget is a list that silently does not sync,
+    // and nothing fails loudly enough to notice. So instead of maintaining
+    // a list of lists, merge any array either side has that hasn't been
+    // handled above. Adding a new collection to memory then syncs by
+    // default rather than by remembering.
+    const handled = { episodes: 1, facts: 1, insights: 1, openThreads: 1 };
+    const keys = Object.create(null);
+    Object.keys(local || {}).forEach((k) => { keys[k] = 1; });
+    Object.keys(remote || {}).forEach((k) => { keys[k] = 1; });
+    Object.keys(keys).forEach((k) => {
+      if (handled[k]) return;
+      const la = Array.isArray(local[k]), ra = Array.isArray(remote[k]);
+      if (!la && !ra) return;
+      out[k] = mergeById(la ? local[k] : [], ra ? remote[k] : [], "id",
+        (x, y) => newerOf(x, y, "at"));
     });
 
     out.profile = Object.assign({}, remote.profile || {}, local.profile || {});
     out.visitCount = Math.max(local.visitCount || 0, remote.visitCount || 0);
     out.lastVisit = [local.lastVisit, remote.lastVisit].filter(Boolean).sort().pop() || null;
+    out.lastReflection = [local.lastReflection, remote.lastReflection]
+      .filter(Boolean).sort().pop() || null;
     return out;
   }
 
@@ -4768,6 +4786,26 @@ Rules:
           + ((d.senses && d.senses.length) ? " \u00b7 shared texture: " + d.senses.join(", ") : "");
         card.appendChild(l);
       }
+      // What it reached for from someone else's account of the same texture.
+      // Shown with the original, so a shaky translation is visible rather
+      // than trusted, and flagged when the source still needs checking.
+      if (d.artist) {
+        const a = document.createElement("div");
+        a.className = "dream-line dim";
+        a.textContent = "\u201c" + d.artist.text + "\u201d \u2014 " + d.artist.who;
+        card.appendChild(a);
+        const src = document.createElement("div");
+        src.className = "dream-line dim";
+        src.style.fontSize = "11px";
+        src.textContent = d.artist.original + "  \u00b7  " + d.artist.source
+          // "primary" is off the manuscript page; "corroborated" means several
+          // sources agree but none is the manuscript. Showing the difference
+          // costs nothing and lets a wrong reading be spotted.
+          + (d.artist.sourcing === "corroborated" ? "  \u00b7  corroborated, not from the manuscript" : "")
+          + (d.artist.verified ? "" : "  \u00b7  source not yet checked");
+        card.appendChild(src);
+      }
+
       (d.insights || []).forEach((t) => {
         const el = document.createElement("div");
         el.className = "dream-line";
@@ -4789,10 +4827,94 @@ Rules:
         el.className = "dream-line dim";
         el.textContent = d.note || "Nothing came of this one.";
         card.appendChild(el);
+      } else {
+        card.appendChild(rateRow(d));
       }
       list.appendChild(card);
     });
   }
+
+  /* ============================================================
+     DID IT LAND?
+
+     The mechanism can be measured \u2014 rarity scores, what fired, what got
+     filtered. Whether the RESULT was worth reading cannot be, by anyone
+     except the person it was for. And that judgement decays within hours:
+     a week later you have a memory of a hit, not a data point.
+
+     So two taps, at the moment, on dreams that actually produced
+     something. Nothing to rate on the ones that returned {} \u2014 those are
+     the honest majority and rating them would only measure the pairing.
+
+     The two questions are kept SEPARATE on purpose. Novel-but-meaningless
+     is the failure mode this whole approach is most prone to, and
+     collapsing the two into one "was it good?" would hide exactly the
+     number worth reporting.
+     ============================================================ */
+
+  function rateDream(id, field, value) {
+    const d = (memory.dreams || []).filter((x) => x.id === id)[0];
+    if (!d) return;
+    d[field] = value;
+    d.ratedAt = new Date().toISOString();
+    saveMemory();
+    renderDreams();
+  }
+
+  function rateRow(d) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:8px;font-size:12px;opacity:.75";
+
+    const ask = (label, field) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:4px";
+      const t = document.createElement("span");
+      t.textContent = label;
+      row.appendChild(t);
+      [["yes", true], ["no", false]].forEach(([txt, val]) => {
+        const b = document.createElement("button");
+        b.textContent = txt;
+        const chosen = d[field] === val;
+        b.style.cssText = "font:inherit;padding:1px 9px;border-radius:999px;cursor:pointer;"
+          + "border:1px solid var(--border);"
+          + (chosen ? "background:var(--text);color:var(--bg);" : "background:transparent;");
+        b.onclick = () => rateDream(d.id, field, val);
+        row.appendChild(b);
+      });
+      return row;
+    };
+
+    wrap.appendChild(ask("Had you already noticed this?", "noticed"));
+    wrap.appendChild(ask("Did it mean anything?", "meant"));
+    return wrap;
+  }
+
+  /* The numbers this is all for. Novelty alone is easy \u2014 pair anything at
+     random and it will be novel. The conjunction is the claim, and the
+     novel-but-meaningless rate is the honest cost of it. */
+  function dreamRates() {
+    const all = (memory.dreams || []);
+    const produced = all.filter((d) => (d.insights || []).length || (d.pings || []).length);
+    const rated = produced.filter((d) => d.noticed !== undefined && d.meant !== undefined);
+    const novel = rated.filter((d) => d.noticed === false);
+    const both = rated.filter((d) => d.noticed === false && d.meant === true);
+    const emptyHanded = novel.filter((d) => d.meant === false);
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + "%" : "\u2014");
+    return {
+      dreams: all.length,
+      produced: produced.length,
+      refused: all.length - produced.length,   // {} is the expected majority
+      rated: rated.length,
+      novel: novel.length,
+      novelRate: pct(novel.length, rated.length),
+      novelAndMeaningful: both.length,
+      hitRate: pct(both.length, rated.length),
+      novelButMeaningless: emptyHanded.length,
+      // The number to report honestly rather than bury.
+      noiseRate: pct(emptyHanded.length, novel.length),
+    };
+  }
+  try { window.__bbRates = dreamRates; } catch (e) {}
 
   function openDreams() { renderDreams(); document.getElementById("dreamsPanel").classList.add("show"); }
   function closeDreams() { document.getElementById("dreamsPanel").classList.remove("show"); }
@@ -4891,6 +5013,33 @@ Rules:
       ? " They also share the same sensory texture (" + pair.senses.join(", ")
         + "). That shared texture may be the point \u2014 look at it."
       : "";
+
+    // AN OLDER ACCOUNT OF THE SAME TEXTURE.
+    //
+    // The same filter, pointed at a bigger corpus. If two of their moments
+    // share a rare texture, someone who wrote down what that texture was
+    // like may have left an account of it — and that account is THEIR OWN
+    // WORDS, which is the one thing always allowed. Never what the artist
+    // would feel; only what they wrote, with the original beside it.
+    //
+    // Returns nothing most of the time, and that is correct.
+    let artist = null;
+    if (typeof BBLens !== "undefined" && pair.senses && pair.senses.length) {
+      try {
+        const sig = { modes: {} };
+        (a.ep.sensory && Object.keys(a.ep.sensory.modes || {}) || []).forEach((m) => {
+          sig.modes[m] = a.ep.sensory.modes[m];
+        });
+        artist = BBLens.lens(sig, a.aff);
+      } catch (e) { artist = null; }
+    }
+    const artistNote = artist
+      ? "\n\nSomeone else wrote about this same texture. Their words, not a reading "
+        + "of them: \u201c" + artist.entry.text + "\u201d \u2014 " + artist.entry.artist + ", "
+        + artist.entry.source + ". You may hold it up beside what they said IF it "
+        + "genuinely fits. Never claim the artist felt what this person feels, never "
+        + "say what it means, and if it does not fit, ignore it completely."
+      : "";
     const body = (pair.mode === "texture")
       ? "=== ONE MOMENT ===\n" + episodeText(a.ep).slice(0, 4000)
         + "\n\n=== ANOTHER MOMENT, UNRELATED, THAT LOOKS OR SOUNDS LIKE IT ===\n"
@@ -4924,6 +5073,7 @@ Rules:
       + '  {}  - if nothing real connects them\n\n'
       + 'The question form is not a lesser answer, it is the honest one. If you can see that something recurs but not what it means, ask about it instead of explaining it. A question you would actually want answered, in plain words, addressed to them.\n\n'
       + "Rules:\n"
+      + artistNote
       + ((pair.mode === "texture")
           ? "- Do NOT start from the feeling; there may not be a shared one. Start from what is physically the same in both, and ask whether that recurs for a reason.\n"
           : "- Look for what the FEELING has in common, then what situation produces that feeling for them. Not what the topics have in common.\n"
@@ -4957,6 +5107,21 @@ Rules:
       mode: pair.mode || "affect", sharedWords: pair.words || [],
       looked: ["a " + feel + " moment", "an older moment that felt the same"],
       insights: [], pings: [] };
+
+    // Kept on the dream so the journal can show what it reached for, whether
+    // or not the model used it. Seeing a lens that was offered and ignored is
+    // as informative as seeing one that landed.
+    if (artist) {
+      log.artist = {
+        who: artist.entry.artist,
+        text: artist.entry.text,
+        original: artist.entry.original,
+        source: artist.entry.source,
+        shared: artist.shared,
+        verified: !!artist.entry.verified,
+        sourcing: artist.entry.sourcing || "unknown",
+      };
+    }
 
     // A question is the honest outcome when something is there and its
     // meaning isn't. It is held, never asserted.
