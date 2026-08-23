@@ -411,6 +411,7 @@
     rulesContext: () => rulesContext(),
     pruneRules: () => pruneRules(),
     timeContext: () => timeContext(),
+    mergeMemory: (a, b) => mergeMemory(a, b),
     openThreadSummaries: (n) => openThreadSummaries(n),
     setDither: (x) => setDither(x),
     getDither: () => DITHER,
@@ -1176,7 +1177,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-22-mic2";
+  const BUILD = "2026-08-22-merge";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2570,6 +2571,72 @@ BOUNDARIES
     pushTimer = setTimeout(pushToDrive, 4000);
   }
 
+  // Union by id. Where the same record exists on both sides, keep the
+  // stronger version of each FIELD rather than picking a whole winner \u2014 a
+  // fact heard more often on the phone and more recently on the laptop
+  // should end up with both the higher count and the newer timestamp.
+  function mergeById(a, b, key, pick) {
+    const out = Object.create(null);
+    const put = (list) => (list || []).forEach((x) => {
+      if (!x) return;
+      const k = (x[key] != null) ? x[key] : JSON.stringify(x);
+      out[k] = out[k] ? pick(out[k], x) : x;
+    });
+    put(a); put(b);
+    return Object.keys(out).map((k) => out[k]);
+  }
+
+  function newerOf(x, y, field) {
+    return (new Date(y[field] || 0).getTime() || 0) > (new Date(x[field] || 0).getTime() || 0) ? y : x;
+  }
+
+  function mergeMemory(local, remote) {
+    if (!remote) return local;
+    if (!local) return Object.assign({}, defaultMemory, remote);
+    const out = Object.assign({}, defaultMemory, remote, local);
+
+    out.episodes = mergeById(local.episodes, remote.episodes, "id",
+      (x, y) => ((y.at || 0) > (x.at || 0) ? y : x));
+
+    out.facts = mergeById(local.facts, remote.facts, "id", (x, y) => {
+      const links = Object.assign({}, x.links || {});
+      Object.keys(y.links || {}).forEach((k) => { links[k] = (links[k] || 0) + y.links[k]; });
+      // Reinforcement is cumulative across devices: the same thing said on
+      // both really was said twice.
+      return Object.assign({}, (y.lastHeard || 0) > (x.lastHeard || 0) ? y : x, {
+        hits: (x.hits || 0) + (y.hits || 0),
+        firstHeard: Math.min(x.firstHeard || Infinity, y.firstHeard || Infinity),
+        lastHeard: Math.max(x.lastHeard || 0, y.lastHeard || 0),
+        amplitude: Math.max(x.amplitude || 0, y.amplitude || 0),
+        links: links,
+      });
+    });
+
+    // A dismissal is a decision the person made. It survives the merge even
+    // if the other device still thinks the insight is live.
+    out.insights = mergeById(local.insights, remote.insights, "id", (x, y) =>
+      (x.dismissed || y.dismissed)
+        ? Object.assign({}, newerOf(x, y, "at"), { dismissed: true })
+        : ((y.amplitude || 0) > (x.amplitude || 0) ? y : x));
+
+    out.openThreads = mergeById(local.openThreads, remote.openThreads, "text", (x, y) =>
+      Object.assign({}, newerOf(x, y, "lastMentioned"), {
+        firstMentioned: [x.firstMentioned, y.firstMentioned].filter(Boolean).sort()[0]
+          || x.firstMentioned,
+      }));
+
+    ["questions", "rules", "chats"].forEach((k) => {
+      if (local[k] || remote[k]) {
+        out[k] = mergeById(local[k], remote[k], "id", (x, y) => newerOf(x, y, "at"));
+      }
+    });
+
+    out.profile = Object.assign({}, remote.profile || {}, local.profile || {});
+    out.visitCount = Math.max(local.visitCount || 0, remote.visitCount || 0);
+    out.lastVisit = [local.lastVisit, remote.lastVisit].filter(Boolean).sort().pop() || null;
+    return out;
+  }
+
   async function pullFromDrive() {
     if (!isSignedIn()) return;
     try {
@@ -2582,15 +2649,19 @@ BOUNDARIES
       }
       const remote = await downloadDriveMemory(driveFileId);
       if (!remote) return;
-      // Newest write wins, per spec — no real merge resolution
-      const remoteTime = remote.lastVisit ? new Date(remote.lastVisit).getTime() : 0;
-      const localTime = memory.lastVisit ? new Date(memory.lastVisit).getTime() : 0;
-      if (remoteTime >= localTime) {
-        memory = Object.assign({}, defaultMemory, remote);
-        try { localStorage.setItem(MEM_KEY, JSON.stringify(memory)); } catch (e) {}
-      } else {
-        schedulePush(); // local is newer, get it upstream
-      }
+      // MERGE, NEVER OVERWRITE.
+      //
+      // This used to be "newest write wins": whichever device had the later
+      // lastVisit replaced the other outright. That silently destroys real
+      // memory. Open the app on a second device, its lastVisit becomes now,
+      // it pushes its small store up, and the first device's months of
+      // episodes are gone on the next pull \u2014 no error, no way back.
+      //
+      // Every collection is merged by id instead, and anything uncertain
+      // resolves toward KEEPING data.
+      memory = mergeMemory(memory, remote);
+      try { localStorage.setItem(MEM_KEY, JSON.stringify(memory)); } catch (e) {}
+      schedulePush();   // both sides now hold the union; get it upstream
       updateSyncUI();
     } catch (e) {
       // Offline or expired token — carry on with local memory
