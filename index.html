@@ -121,13 +121,13 @@
     background: var(--panel2); color: var(--muted); cursor: pointer; display: flex; align-items: center;
     justify-content: center; flex-shrink: 0; }
   #voiceSettingsBtn:hover { color: var(--text); }
-  #listenPanel,
   .bb-epigraph { margin: 26px auto 0; max-width: 30rem; padding-top: 18px;
     border-top: 1px solid var(--border); opacity: .62; }
   .bb-epigraph .q { display: block; font-style: italic; font-size: 14px;
     line-height: 1.6; }
   .bb-epigraph .a { display: block; margin-top: 8px; font-size: 12px;
     letter-spacing: .02em; }
+  #listenPanel,
   #dreamsPanel { display: none; position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.6);
     align-items: center; justify-content: center; padding: 20px; }
   #listenPanel.show,
@@ -284,8 +284,8 @@
   <div id="listenPanel">
     <div class="voice-card">
       <h2>Play it something</h2>
-      <p class="sub">It measures what it hears \u2014 brightness, thickness, roughness,
-        tension \u2014 and looks for someone who wrote about that same texture. Your own
+      <p class="sub">It measures what it hears — brightness, thickness, roughness,
+        tension — and looks for someone who wrote about that same texture. Your own
         recordings work, and so does anything public domain (musopen.org and imslp.org
         both have a lot). Nothing is uploaded; the analysis happens here.</p>
       <input id="listenFile" type="file" accept="audio/*" style="margin:10px 0" />
@@ -1220,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-gallery";
+  const BUILD = "2026-08-24-panelfix";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
