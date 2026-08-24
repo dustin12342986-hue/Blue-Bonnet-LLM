@@ -122,6 +122,12 @@
     justify-content: center; flex-shrink: 0; }
   #voiceSettingsBtn:hover { color: var(--text); }
   #listenPanel,
+  .bb-epigraph { margin: 26px auto 0; max-width: 30rem; padding-top: 18px;
+    border-top: 1px solid var(--border); opacity: .62; }
+  .bb-epigraph .q { display: block; font-style: italic; font-size: 14px;
+    line-height: 1.6; }
+  .bb-epigraph .a { display: block; margin-top: 8px; font-size: 12px;
+    letter-spacing: .02em; }
   #dreamsPanel { display: none; position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.6);
     align-items: center; justify-content: center; padding: 20px; }
   #listenPanel.show,
@@ -364,6 +370,15 @@
       <h2>Hi, I'm Blue Bonnet.</h2>
       <p>Built for how ADHD, dyslexic, and autistic minds actually work — not a generic assistant. Ask me anything, especially the stuff that's hard to get organized or started on.</p>
       <div id="chips"></div>
+      <!-- Michelangelo's account of sculpture, and of this: the figure is
+           already in the block, and the hand removes what is superfluous
+           to reach it. Nothing is added. Rime 151, c. 1540. -->
+      <blockquote class="bb-epigraph">
+        <span class="q">The finest artist has no conception that a single block of
+          marble does not already hold inside itself, beneath its excess; and only
+          the hand that obeys the intellect reaches it.</span>
+        <span class="a">Michelangelo, <i>Rime</i> 151, c. 1540</span>
+      </blockquote>
     </div>
   </div>
 
@@ -1204,7 +1219,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-vision";
+  const BUILD = "2026-08-24-epigraph";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
