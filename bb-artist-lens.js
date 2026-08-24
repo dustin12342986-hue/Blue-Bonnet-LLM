@@ -303,6 +303,10 @@
        person. */
     {
       id: "sch-music-without-sound",
+      // This is the 1831 review OF Chopin's Op. 2 \u2014 the "Hut ab, ihr Herren"
+      // piece. The work is the subject of the article the passage comes from.
+      works: [{ title: "Variations on \u2018L\u00e0 ci darem la mano\u2019, Op. 2",
+                by: "Fr\u00e9d\u00e9ric Chopin", namedInSource: true }],
       artist: "Robert Schumann",
       source: "Gesammelte Schriften \u00fcber Musik und Musiker, \u2018Ein Werk II\u2019, 1831",
       cite: "de.wikisource.org/wiki/Gesammelte_Schriften_\u00fcber_Musik_und_Musiker/Ein_Werk_II",
@@ -383,6 +387,8 @@
     },
     {
       id: "ber-first-opera",
+      // Named IN the passage: "On y jouait les Danaides, de Salieri."
+      works: [{ title: "Les Dana\u00efdes", by: "Antonio Salieri", namedInSource: true }],
       artist: "Hector Berlioz",
       source: "M\u00e9moires, on first hearing Salieri\u2019s Les Dana\u00efdes at the Op\u00e9ra",
       cite: "fr.wikisource.org/wiki/M\u00e9moires_de_Hector_Berlioz",
@@ -605,6 +611,7 @@
     },
     {
       id: "pr-tea-and-lime-blossom",
+      works: [{ title: "Du c\u00f4t\u00e9 de chez Swann", by: "Marcel Proust", namedInSource: true }],
       artist: "Marcel Proust",
       source: "Du c\u00f4t\u00e9 de chez Swann, 1913",
       cite: "fr.wikisource.org/wiki/Du_c\u00f4t\u00e9_de_chez_Swann",
@@ -812,6 +819,38 @@
       + e.original + " \u2014 " + e.source + ")";
   }
 
+  /* SUGGESTING SOMETHING TO ACTUALLY GO AND HEAR OR SEE.
+     
+     The corpus holds writing ABOUT perception, not works \u2014 so on its own
+     it has nothing to recommend, and a suggestion from the model rides in
+     unguarded with no fact to bound it against. A jazz record named out of
+     general knowledge is the one place this whole system's discipline does
+     not reach.
+
+     `works` closes that for the narrow case where it can be closed
+     honestly: a piece is listed ONLY when the passage itself names it.
+     Berlioz writes "On y jouait les Danaides, de Salieri" \u2014 so Les
+     Dana\u00efdes is his, not an inference. Nothing is added from outside.
+
+     The chain is then: your texture \u2192 a passage that shares it \u2192 the work
+     that passage was actually about \u2192 cited. Nothing invented at any step.
+
+     Titles and attributions are facts, not copyrightable expression, so
+     naming a piece is safe even where the recording is not.
+
+     The narrowness is the point and also the cost: it can only ever
+     suggest what these few people wrote about. That is a small, dead,
+     mostly-European set. Anything wider stays the model's invention. */
+  function suggest(sig, aff, opts) {
+    const hit = lens(sig, aff, opts);
+    if (!hit || !hit.entry.works || !hit.entry.works.length) return null;
+    return {
+      work: hit.entry.works[0],
+      because: hit.entry,
+      shared: hit.shared,
+    };
+  }
+
   function stats() {
     return {
       usable: !tooSmall(),
@@ -822,6 +861,7 @@
       verified: CORPUS.filter(function (e) { return e.verified; }).length,
       primary: CORPUS.filter(function (e) { return e.sourcing === "primary"; }).length,
       corroborated: CORPUS.filter(function (e) { return e.sourcing === "corroborated"; }).length,
+      withWorks: CORPUS.filter(function (e) { return e.works && e.works.length; }).length,
     };
   }
 
@@ -830,6 +870,7 @@
     phrase: phrase,
     stats: stats,
     corpus: CORPUS,
+    suggest: suggest,
     tooSmall: tooSmall,
     MIN_CORPUS: MIN_CORPUS,
     _rarity: RARITY,
