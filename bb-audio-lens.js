@@ -1,0 +1,256 @@
+/**
+ * BB AUDIO LENS — a measured sense, not a described one.
+ * =====================================================
+ *
+ * NOT WIRED IN. Standalone, with its own tests.
+ *
+ *
+ * ── THE QUESTION THIS ANSWERS ──────────────────────────────────────────
+ *
+ * Every sense in the corpus so far is a sense someone WROTE ABOUT. Van
+ * Gogh's sight, Berlioz's hearing, Proust's smell — all of it arrives as
+ * text and gets matched as text. That leaves one thing untested: does the
+ * crossing work when a sense arrives as MEASUREMENT rather than as words?
+ *
+ * Sound is the one that can be measured in a browser with no libraries.
+ * The Web Audio API's AnalyserNode gives a real FFT of anything playing.
+ * From that spectrum, four features can be computed honestly:
+ *
+ *   centroid  — where the spectral energy sits. Bright vs dark.
+ *   spread    — how wide the energy is. Thick vs thin.
+ *   flux      — how fast the spectrum changes frame to frame. Rough vs smooth.
+ *   activity  — onset density. Tense vs released.
+ *
+ * Those four map onto qualities ALREADY in the artist lens, derived from
+ * the writers' own words. So a sound and a Van Gogh letter can reach each
+ * other through the same vocabulary — not because anyone mapped frequency
+ * to colour, but because "bright" is a word both a spectrum and a painter
+ * can honestly produce.
+ *
+ *
+ * ── WHAT THIS IS NOT ───────────────────────────────────────────────────
+ *
+ * This is analysis, not hearing. A centroid of 3 kHz means a sound is
+ * bright. Nothing in the computation IS brightness to anything. The same
+ * wall as the colour question, and it is not closed here.
+ *
+ * What it does close is narrower and real: sound stops being a thing
+ * described in books and becomes a thing the system can take in directly.
+ *
+ *
+ * ── WHY NOT FREQUENCY-TO-COLOUR ────────────────────────────────────────
+ *
+ * Still refused, for the same reason as before. Relating 400–790 THz light
+ * to 20 Hz–20 kHz sound means choosing an octave shift, and the choice is
+ * arbitrary. Newton, Scriabin and Messiaen all built one and all three
+ * disagree. Brightness is a shared DESCRIPTION; it is not a shared
+ * frequency, and pretending otherwise would be a confident claim grounded
+ * in nothing.
+ */
+
+(function (global) {
+  "use strict";
+
+  /* ---- feature extraction ----------------------------------------------
+     Pure functions over a spectrum array, so they can be tested without a
+     browser. `bins` is magnitude per frequency bin, 0..255 as AnalyserNode
+     produces, and sampleRate/fftSize give the frequency of each bin. */
+
+  function binHz(i, sampleRate, fftSize) {
+    return (i * sampleRate) / fftSize;
+  }
+
+  // Spectral centroid: the energy-weighted mean frequency. The standard
+  // correlate of perceived brightness, and it is a measurement rather than
+  // an interpretation.
+  function centroid(bins, sampleRate, fftSize) {
+    let num = 0, den = 0;
+    for (let i = 0; i < bins.length; i++) {
+      const m = bins[i];
+      if (!m) continue;
+      num += binHz(i, sampleRate, fftSize) * m;
+      den += m;
+    }
+    return den ? num / den : 0;
+  }
+
+  // How widely energy is spread around the centroid. A pure tone is narrow;
+  // a chord or noise is wide.
+  function spread(bins, sampleRate, fftSize) {
+    const c = centroid(bins, sampleRate, fftSize);
+    let num = 0, den = 0;
+    for (let i = 0; i < bins.length; i++) {
+      const m = bins[i];
+      if (!m) continue;
+      const d = binHz(i, sampleRate, fftSize) - c;
+      num += d * d * m;
+      den += m;
+    }
+    return den ? Math.sqrt(num / den) : 0;
+  }
+
+  // How much the spectrum changed since the previous frame. Sustained
+  // sound is low; percussive or shifting sound is high.
+  function flux(bins, prev) {
+    if (!prev || !prev.length) return 0;
+    let sum = 0, n = Math.min(bins.length, prev.length);
+    for (let i = 0; i < n; i++) {
+      const d = bins[i] - prev[i];
+      if (d > 0) sum += d;              // half-wave rectified, as is standard
+    }
+    return n ? sum / n : 0;
+  }
+
+  function energy(bins) {
+    let s = 0;
+    for (let i = 0; i < bins.length; i++) s += bins[i];
+    return bins.length ? s / bins.length : 0;
+  }
+
+  /* Peak, not mean, decides whether there is sound at all.
+     The first version gated on MEAN magnitude across every bin, and the
+     tests caught it immediately: a loud pure tone puts energy in about
+     eight bins out of a thousand, so its mean is around 1.6 and it read as
+     silence. A sine wave at full volume was being treated as nothing.
+     Peak magnitude is what actually distinguishes sound from no sound. */
+  function peak(bins) {
+    let p = 0;
+    for (let i = 0; i < bins.length; i++) if (bins[i] > p) p = bins[i];
+    return p;
+  }
+
+  /* ---- qualities -------------------------------------------------------
+     The thresholds below are the weak point and they are stated as such.
+     They come from the usual ranges for musical audio, NOT from anything
+     measured on this system. Getting a threshold wrong by guessing has
+     already happened twice in this project, so these should be treated as
+     a starting point to be tuned against real material, not as facts.
+
+     Everything is expressed as a fraction of Nyquist rather than in Hz, so
+     the mapping survives a change of sample rate. */
+
+  const T = {
+    brightCentroid: 0.22,   // of Nyquist. above this reads bright
+    darkCentroid:   0.08,   // below this reads dark
+    thickSpread:    0.18,   // wide energy
+    thinSpread:     0.06,   // narrow energy
+    roughFlux:      6,      // fast spectral change
+    smoothFlux:     1.5,    // sustained
+    tenseActivity:  0.55,   // combined flux + spread, normalised
+    quietPeak:      20,     // peak magnitude below this is silence (0..255)
+  };
+
+  /**
+   * qualitiesOfSound(frame) — the same vocabulary the artist lens uses.
+   *
+   * frame = { bins: [..], prev: [..], sampleRate, fftSize }
+   *
+   * Returns an array like ["bright","thin","smooth"], which can go straight
+   * into the lens as a `sound` texture.
+   */
+  function qualitiesOfSound(frame) {
+    const bins = frame.bins || [];
+    if (!bins.length) return [];
+    const sr = frame.sampleRate || 48000;
+    const fft = frame.fftSize || (bins.length * 2);
+    const nyq = sr / 2;
+
+    // Silence has no qualities. Saying otherwise would be inventing.
+    if (peak(bins) < T.quietPeak) return [];
+
+    const c = centroid(bins, sr, fft) / nyq;
+    const s = spread(bins, sr, fft) / nyq;
+    const f = flux(bins, frame.prev);
+
+    const out = [];
+    if (c >= T.brightCentroid) out.push("bright");
+    else if (c <= T.darkCentroid) out.push("dark");
+
+    if (s >= T.thickSpread) out.push("thick");
+    else if (s <= T.thinSpread) out.push("thin");
+
+    if (f >= T.roughFlux) out.push("rough");
+    else if (f <= T.smoothFlux) out.push("soft");
+
+    // Tension is a combination rather than a single axis: busy AND wide.
+    const activity = Math.min(1, (f / 12) * 0.6 + s * 2 * 0.4);
+    if (activity >= T.tenseActivity) out.push("tense");
+    else if (activity <= 0.2) out.push("released");
+
+    if (c >= 0.35) out.push("high");
+    else if (c <= 0.05) out.push("low");
+
+    return out;
+  }
+
+  /**
+   * measure(frame) — the numbers as well as the words, so a wrong
+   * threshold can be spotted rather than just producing a wrong label.
+   */
+  function measure(frame) {
+    const bins = frame.bins || [];
+    const sr = frame.sampleRate || 48000;
+    const fft = frame.fftSize || (bins.length * 2);
+    const nyq = sr / 2;
+    return {
+      energy: energy(bins),
+      peak: peak(bins),
+      centroidHz: centroid(bins, sr, fft),
+      centroidNorm: centroid(bins, sr, fft) / nyq,
+      spreadNorm: spread(bins, sr, fft) / nyq,
+      flux: flux(bins, frame.prev),
+      qualities: qualitiesOfSound(frame),
+    };
+  }
+
+  /* ---- live capture ----------------------------------------------------
+     Only runs in a browser. Everything above is pure and testable without
+     one, which is deliberate: the maths should be checkable even where the
+     audio is not. */
+
+  function listen(mediaStreamOrElement, onFrame, opts) {
+    opts = opts || {};
+    if (typeof global.AudioContext === "undefined") {
+      throw new Error("no Web Audio in this environment");
+    }
+    const ctx = new global.AudioContext();
+    const src = mediaStreamOrElement instanceof global.MediaStream
+      ? ctx.createMediaStreamSource(mediaStreamOrElement)
+      : ctx.createMediaElementSource(mediaStreamOrElement);
+    const an = ctx.createAnalyser();
+    an.fftSize = opts.fftSize || 2048;
+    an.smoothingTimeConstant = 0.6;
+    src.connect(an);
+    // Pass audio through so listening does not silence playback.
+    if (!(mediaStreamOrElement instanceof global.MediaStream)) an.connect(ctx.destination);
+
+    const bins = new Uint8Array(an.frequencyBinCount);
+    let prev = null;
+    let running = true;
+
+    function tick() {
+      if (!running) return;
+      an.getByteFrequencyData(bins);
+      const frame = { bins: Array.from(bins), prev: prev,
+                      sampleRate: ctx.sampleRate, fftSize: an.fftSize };
+      onFrame(measure(frame));
+      prev = Array.from(bins);
+      global.requestAnimationFrame(tick);
+    }
+    tick();
+
+    return { stop: function () { running = false; try { ctx.close(); } catch (e) {} } };
+  }
+
+  global.BBAudio = {
+    qualitiesOfSound: qualitiesOfSound,
+    measure: measure,
+    listen: listen,
+    THRESHOLDS: T,
+    _centroid: centroid,
+    _spread: spread,
+    _flux: flux,
+    _energy: energy,
+    _peak: peak,
+  };
+})(typeof window !== "undefined" ? window : globalThis);
