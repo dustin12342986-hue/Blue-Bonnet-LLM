@@ -1220,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-gallery2";
+  const BUILD = "2026-08-24-warm";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -4022,13 +4022,32 @@ Rules:
     let sig, aff;
     try { sig = sensoryOf(String(queryText)); aff = affectOf(String(queryText)); }
     catch (e) { galleryBusy = false; return; }
-    BBGallery.pickFor(sig, aff, "vangogh", { n: 12 })
+    BBGallery.pickFor(sig, aff, "vangogh", { n: 5 })
       .then((r) => { galleryPick = r || null; })
       .catch(() => { galleryPick = null; })
       .then(() => { galleryBusy = false; });
   }
 
+  /* Warm the gallery once, quietly, a while after load. Measuring is a
+     network round trip per canvas; doing it for the first time when
+     someone asks means the answer arrives two turns late. */
+  let galleryWarmed = false;
+  function warmGallery() {
+    if (galleryWarmed || typeof BBGallery === "undefined") return;
+    galleryWarmed = true;
+    try { BBGallery.measureAll("vangogh", 5).catch(() => {}); } catch (e) {}
+  }
+  setTimeout(warmGallery, 12000);
+
   function galleryAside() {
+    if (galleryBusy && !galleryPick) {
+      // Asked, still measuring. Better to say that than to let the model
+      // fill the gap with something it made up.
+      return "\n\nA PAINTING IS BEING CHOSEN\n"
+        + "They asked to see something and a set of canvases is being measured "
+        + "right now. Say that you are looking and it will be a moment \u2014 do NOT "
+        + "name a painting from your own knowledge in the meantime.";
+    }
     if (!galleryPick || !galleryPick.painting) return "";
     const g = galleryPick.painting;
     const shared = (galleryPick.shared || []).slice(0, 3).join(", ");
