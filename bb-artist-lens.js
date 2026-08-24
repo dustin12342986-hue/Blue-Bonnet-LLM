@@ -662,6 +662,63 @@
      and one explanation covers both.
   */
 
+  /* ---- CROSS-MODAL QUALITIES -------------------------------------------
+
+     Van Gogh wrote "la haute note jaune" \u2014 a HIGH NOTE of yellow. He
+     reached for a musical word to describe a colour, because height is a
+     dimension they genuinely share. Berlioz wrote "la rudesse grandiose de
+     D\u00e9rivis" \u2014 roughness, a touch word, for a voice.
+
+     The writers crossed the senses themselves. That is the only bridge
+     used here.
+
+     What is NOT used: frequency. Visible light is around 400\u2013790 THz and
+     audible sound is 20 Hz\u201320 kHz, so relating them means shifting by
+     roughly forty octaves, and WHICH octave is a choice rather than a
+     fact. Newton, Scriabin and Messiaen each built a colour-sound mapping
+     and all three disagree, because there is nothing there to be right
+     about. A bridge like that produces confident matches grounded in
+     nothing, which is the failure this whole project exists to prevent.
+
+     Structural qualities are different: high/low, rough/smooth,
+     sharp/soft, bright/dark, tense/released. Those transfer across senses
+     in how people actually talk, and they are in the source texts.
+
+     And the looseness is acceptable here for one specific reason: this
+     never ASSERTS a connection. Scriabin's mistake was declaring that a
+     colour IS a note. Putting a yellow passage beside a note passage
+     claims nothing \u2014 the person finds the join or does not. An offer can
+     be loose where a verdict cannot.
+  */
+
+  const QUALITIES = {
+    high:     ["high", "higher", "climbs", "rises", "peaks", "top"],
+    low:      ["low", "deep", "under", "beneath", "down", "bottom"],
+    rough:    ["rough", "roughness", "grate", "harsh", "dry", "coarse"],
+    soft:     ["soft", "gentle", "hush", "quiet", "smooth", "delicate", "frail"],
+    bright:   ["bright", "blaze", "glow", "brilliant", "lit", "flash", "vivid"],
+    dark:     ["dark", "dim", "shadow", "veiled", "hidden", "night", "black"],
+    tense:    ["tortured", "excessive", "shook", "screaming", "difficult", "insisted"],
+    released: ["rest", "calm", "settle", "still", "silence", "pause"],
+    thick:    ["thick", "mass", "dense", "impasto", "saturates", "heavy"],
+    thin:     ["thin", "faint", "impalpable", "immaterial", "pale", "sparse"],
+  };
+
+  // Derived from the words already tagged on an entry \u2014 never added by
+  // hand, so a quality can only appear if the writer's own vocabulary put
+  // it there.
+  function qualitiesOf(modes) {
+    const out = Object.create(null);
+    Object.keys(modes || {}).forEach(function (m) {
+      (modes[m] || []).forEach(function (w) {
+        Object.keys(QUALITIES).forEach(function (q) {
+          if (QUALITIES[q].indexOf(w) !== -1) out[q] = 1;
+        });
+      });
+    });
+    return Object.keys(out);
+  }
+
   const SEEN = Object.create(null);
 
   const RARITY = (function () {
@@ -736,6 +793,20 @@
   function textureScore(sig, entry) {
     let score = 0;
     const shared = [];
+
+    /* A shared QUALITY crosses channels: Van Gogh's "high" yellow can reach
+       Schumann's "high" peaks even though one is sight and one is not. It
+       is worth less than a shared rare word, because it is a looser thing
+       \u2014 enough to put two passages side by side, not enough to claim they
+       belong together. */
+    const mine = qualitiesOf(sig.modes);
+    const theirs = qualitiesOf(entry.modes);
+    mine.forEach(function (q) {
+      if (theirs.indexOf(q) === -1) return;
+      score += 0.6;
+      shared.push(q);
+    });
+
     Object.keys(sig.modes || {}).forEach(function (m) {
       const mine = sig.modes[m] || [];
       const theirs = (entry.modes && entry.modes[m]) || [];
@@ -871,6 +942,8 @@
     stats: stats,
     corpus: CORPUS,
     suggest: suggest,
+    qualitiesOf: qualitiesOf,
+    QUALITIES: QUALITIES,
     tooSmall: tooSmall,
     MIN_CORPUS: MIN_CORPUS,
     _rarity: RARITY,
