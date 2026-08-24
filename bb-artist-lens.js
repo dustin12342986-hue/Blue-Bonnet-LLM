@@ -627,6 +627,55 @@
       modes: { taste: ["tea", "madeleine"], smell: ["infusion", "blossom", "lime"] },
       aff: { valence: 0.8, arousal: 0.2 },
     },
+
+    /* --- MICHELANGELO -------------------------------------------------
+       Rime 151, c. 1540, to Vittoria Colonna. Original Italian from
+       it.wikisource.org. Public domain (d. 1564).
+
+       Added for TOUCH, which had ten entries but almost none about
+       material under the hand \u2014 the corpus had painters looking and
+       musicians listening and nobody working stone.
+
+       And the content is worth noticing rather than passing over: his
+       account of sculpture is SUBTRACTIVE. The figure is already in the
+       block; the hand removes what is superfluous to reach it. That is
+       the same shape as the retrieval this corpus feeds \u2014 meaning
+       arrived at by taking away, not by adding. Written in 1540 about
+       marble, and nobody arranged for it to be here. */
+    {
+      id: "mich-151-marble-already-contains",
+      artist: "Michelangelo Buonarroti",
+      source: "Rime 151, to Vittoria Colonna, c. 1540",
+      cite: "it.wikisource.org/wiki/Rime_(Michelangelo)/151.",
+      sourcing: "primary",
+      lang: "it",
+      original: "Non ha l\u2019ottimo artista alcun concetto / c\u2019un marmo solo in s\u00e9 non "
+              + "circonscriva / col suo superchio, e solo a quello arriva / la man che "
+              + "ubbidisce all\u2019intelletto.",
+      text: "The finest artist has no conception that a single block of marble does not "
+          + "already hold inside itself, beneath its excess; and only the hand that "
+          + "obeys the intellect reaches it.",
+      verified: true,
+      modes: { touch: ["marble", "hand", "block", "stone"],
+               barrier: ["excess", "beneath", "hidden"],
+               sight: ["conception"] },
+      aff: { valence: 0.5, arousal: 0.5 },
+    },
+    {
+      id: "mich-151-hardness",
+      artist: "Michelangelo Buonarroti",
+      source: "Rime 151, to Vittoria Colonna, c. 1540",
+      cite: "it.wikisource.org/wiki/Rime_(Michelangelo)/151.",
+      sourcing: "primary",
+      lang: "it",
+      original: "Amor dunque non ha, n\u00e9 tua beltate / o durezza o fortuna o gran "
+              + "disdegno / del mio mal colpa",
+      text: "So love is not to blame for my hurt, nor your beauty, nor hardness, nor "
+          + "fortune, nor great disdain.",
+      verified: true,
+      modes: { touch: ["hardness"], barrier: ["disdain", "blame"] },
+      aff: { valence: -0.5, arousal: 0.6 },
+    },
   ];
 
   /* TO ADD AN ENTRY \u2014 the process, so it stays honest:
