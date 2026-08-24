@@ -54,15 +54,25 @@
   /* Categories confirmed to exist on Commons. Add only after checking \u2014 a
      wrong category name returns an empty list, which looks like "no
      paintings matched" and is a quiet lie. */
+  /* Search terms, not categories.
+
+     The first version asked for the FILES in a painter's category. That
+     returned nothing: "Category:Paintings by Vincent van Gogh in the Van
+     Gogh Museum" holds fourteen SUBCATEGORIES and no files of its own, so
+     gcmtype=file matched zero. An empty catalogue looks exactly like "no
+     painting crossed" and the gallery could never work \u2014 a quiet failure
+     of precisely the kind this project keeps finding.
+
+     Commons search over the File namespace does not care how categories
+     are nested, so it survives a curator reorganising things. */
   const PAINTERS = [
     { key: "vangogh",  name: "Vincent van Gogh", died: 1890,
-      category: "Category:Paintings by Vincent van Gogh in the Van Gogh Museum" },
+      search: "Van Gogh painting oil canvas" },
     { key: "delacroix", name: "Eug\u00e8ne Delacroix", died: 1863,
-      category: "Category:Paintings by Eug\u00e8ne Delacroix" },
+      search: "Delacroix painting oil canvas" },
+    { key: "monet", name: "Claude Monet", died: 1926,
+      search: "Claude Monet painting oil canvas" },
   ];
-
-  let cache = Object.create(null);      // painter key -> [{title,url}]
-  let measured = Object.create(null);   // url -> { qualities, ... }
 
   function painters() {
     return PAINTERS.map(function (p) {
@@ -81,10 +91,11 @@
 
     const url = API
       + "?action=query&format=json&origin=*"
-      + "&generator=categorymembers"
-      + "&gcmtitle=" + encodeURIComponent(p.category)
-      + "&gcmtype=file&gcmlimit=" + (limit || 40)
-      + "&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=480";
+      + "&generator=search"
+      + "&gsrsearch=" + encodeURIComponent(p.search)
+      + "&gsrnamespace=6"                       // File: namespace only
+      + "&gsrlimit=" + (limit || 30)
+      + "&prop=imageinfo&iiprop=url&iiurlwidth=480";
 
     const res = await fetch(url);
     if (!res.ok) throw new Error("Commons API " + res.status);
@@ -97,13 +108,15 @@
       return {
         title: String(pg.title || "").replace(/^File:/, "").replace(/\.[a-z]+$/i, "")
           .replace(/_/g, " "),
-        // thumburl is what the API returns; a 480px thumb is plenty for
-        // measuring and avoids pulling a 6MB original.
-        url: info.thumburl || info.url || null,
+        url: info.thumburl || null,
         page: info.descriptionurl || null,
         painter: p.name,
       };
-    }).filter(function (x) { return x.url && /\.(jpg|jpeg|png)$/i.test(x.url); });
+    }).filter(function (x) { return x.url && /\.(jpg|jpeg|png)/i.test(x.url); });
+
+    // An empty list is a failure, not an answer. Saying so beats caching
+    // nothing and reporting "no painting crossed" forever after.
+    if (!list.length) throw new Error("Commons returned no images for " + key);
 
     cache[key] = list;
     return list;
