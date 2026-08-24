@@ -475,6 +475,151 @@
       modes: { sight: ["dreams", "sight", "awake"], barrier: ["asleep", "offends"] },
       aff: { valence: 0.2, arousal: 0.4 },
     },
+
+    /* --- BRILLAT-SAVARIN ----------------------------------------------
+       Physiologie du go\u00fbt (1825). Original French from fr.wikisource.org
+       and Project Gutenberg. Public domain (d. 1826).
+
+       Added because `taste` was EMPTY \u2014 zero entries, zero words. Not
+       "nothing matched": structurally nothing to match against. Anyone
+       describing something by taste got silence with no way to tell why.
+       Smell was one entry, which is nearly as bad, and smell is the sense
+       most tied to involuntary memory.
+
+       Brillat-Savarin is the right source because he wrote about taste as
+       PERCEPTION rather than as cooking \u2014 attention, saturation, the dull
+       sensation of a palate that isn't paying attention. */
+    {
+      id: "bs-dull-sensation",
+      artist: "Jean Anthelme Brillat-Savarin",
+      source: "Physiologie du go\u00fbt, M\u00e9ditation XII, 1825",
+      cite: "fr.wikisource.org/wiki/Physiologie_du_go\u00fbt/M\u00e9ditation_XII",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Il est des individus \u00e0 qui la nature a refus\u00e9 une finesse d\u2019organes, "
+              + "ou une tenue d\u2019attention sans lesquelles les mets les plus succulents "
+              + "passent inaper\u00e7us [...] Elles n\u2019\u00e9veillent chez eux qu\u2019un sentiment obtus.",
+      text: "There are people to whom nature has refused a fineness of the organs, or a "
+          + "sustained attention, without which the most succulent dishes pass unnoticed "
+          + "[...] Flavours wake in them nothing but a dull feeling.",
+      verified: true,
+      modes: { taste: ["flavours", "dishes", "succulent"],
+               barrier: ["unnoticed", "dull", "attention"] },
+      aff: { valence: -0.3, arousal: 0.3 },
+    },
+    {
+      id: "bs-mouth-waters-at-the-word",
+      artist: "Jean Anthelme Brillat-Savarin",
+      source: "Physiologie du go\u00fbt, on truffles, 1825",
+      cite: "gutenberg.org/files/22741 \u2014 \u00a7 VII, Des Truffes",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "Qui n\u2019a pas senti sa bouche se mouiller en entendant parler de truffes "
+              + "\u00e0 la proven\u00e7ale ?",
+      text: "Who has not felt their mouth water on hearing someone speak of truffles \u00e0 "
+          + "la proven\u00e7ale?",
+      verified: true,
+      modes: { taste: ["mouth", "truffles", "water"], sound: ["speak", "hearing"] },
+      aff: { valence: 0.7, arousal: 0.6 },
+    },
+    {
+      id: "bs-tongue-saturates",
+      artist: "Jean Anthelme Brillat-Savarin",
+      source: "Physiologie du go\u00fbt, on wine, 1825",
+      cite: "Physiologie du go\u00fbt \u2014 widely quoted; verify against Gutenberg text",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "la langue se sature ; et apr\u00e8s le troisi\u00e8me verre, le meilleur vin "
+              + "n\u2019\u00e9veille plus qu\u2019une sensation obtuse.",
+      text: "the tongue saturates; and after the third glass, the best wine wakes nothing "
+          + "but a dull sensation.",
+      verified: true,
+      modes: { taste: ["tongue", "wine", "glass"], barrier: ["saturates", "dull"] },
+      aff: { valence: -0.2, arousal: 0.3 },
+    },
+    {
+      id: "bs-nakedness-of-the-skin",
+      artist: "Jean Anthelme Brillat-Savarin",
+      source: "Physiologie du go\u00fbt, M\u00e9ditation XIV, 1825",
+      cite: "fr.wikisource.org/wiki/Physiologie_du_go\u00fbt/M\u00e9ditation_XIV",
+      sourcing: "primary",
+      lang: "fr",
+      original: "La nature l\u2019a primitivement condamn\u00e9 \u00e0 la douleur par la nudit\u00e9 de sa "
+              + "peau, par la forme de ses pieds",
+      text: "Nature condemned him from the start to pain, by the nakedness of his skin, "
+          + "by the shape of his feet",
+      verified: true,
+      modes: { touch: ["skin", "nakedness", "pain", "feet"] },
+      aff: { valence: -0.4, arousal: 0.4 },
+    },
+
+    /* --- PROUST -------------------------------------------------------
+       Du c\u00f4t\u00e9 de chez Swann (1913). Original French from
+       fr.wikisource.org (Page:Proust - Du c\u00f4t\u00e9 de chez Swann.djvu/64).
+       Public domain (d. 1922).
+
+       Smell was ONE entry, and smell is the sense that does this work \u2014 a
+       smell puts you somewhere thirty years ago with no query and no
+       effort. This is the passage the whole idea of involuntary memory is
+       named after, and the second entry below is the part people forget:
+       SEEING the madeleine recalled nothing. Only tasting it did. Sight
+       failed where taste worked, which is the argument for why a lens
+       weighted 16-to-1 toward the eye is the wrong shape. */
+    {
+      id: "pr-smell-and-taste-remain",
+      artist: "Marcel Proust",
+      source: "Du c\u00f4t\u00e9 de chez Swann, 1913",
+      cite: "fr.wikisource.org/wiki/Page:Proust_-_Du_c\u00f4t\u00e9_de_chez_Swann.djvu/64",
+      sourcing: "primary",
+      lang: "fr",
+      original: "quand d\u2019un pass\u00e9 ancien rien ne subsiste, apr\u00e8s la mort des \u00eatres, "
+              + "apr\u00e8s la destruction des choses, seules, plus fr\u00eales mais plus vivaces, "
+              + "plus immat\u00e9rielles, plus persistantes, plus fid\u00e8les, l\u2019odeur et la saveur "
+              + "restent encore longtemps, comme des \u00e2mes [...] \u00e0 porter sans fl\u00e9chir, sur "
+              + "leur gouttelette presque impalpable, l\u2019\u00e9difice immense du souvenir.",
+      text: "when nothing is left of an old past, after the people have died and the "
+          + "things have been destroyed, alone, frailer but more alive, more "
+          + "immaterial, more persistent, more faithful, smell and taste remain a long "
+          + "while, like souls [...] carrying without giving way, on their almost "
+          + "impalpable droplet, the immense edifice of memory.",
+      verified: true,
+      modes: { smell: ["smell", "odour"], taste: ["taste", "droplet"],
+               barrier: ["remain", "ruin", "destroyed"] },
+      aff: { valence: 0.4, arousal: 0.4 },
+    },
+    {
+      id: "pr-sight-recalled-nothing",
+      artist: "Marcel Proust",
+      source: "Du c\u00f4t\u00e9 de chez Swann, 1913",
+      cite: "fr.wikisource.org/wiki/Du_c\u00f4t\u00e9_de_chez_Swann",
+      sourcing: "primary",
+      lang: "fr",
+      original: "La vue de la petite madeleine ne m\u2019avait rien rappel\u00e9 avant que je "
+              + "n\u2019y eusse go\u00fbt\u00e9.",
+      text: "The sight of the little madeleine had brought nothing back to me until I "
+          + "had tasted it.",
+      verified: true,
+      modes: { sight: ["sight", "seeing"], taste: ["tasted", "madeleine"],
+               barrier: ["nothing", "until"] },
+      aff: { valence: 0.2, arousal: 0.5 },
+    },
+    {
+      id: "pr-tea-and-lime-blossom",
+      artist: "Marcel Proust",
+      source: "Du c\u00f4t\u00e9 de chez Swann, 1913",
+      cite: "fr.wikisource.org/wiki/Du_c\u00f4t\u00e9_de_chez_Swann",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "Ce go\u00fbt, c\u2019\u00e9tait celui du petit morceau de madeleine que [...] ma tante "
+              + "L\u00e9onie m\u2019offrait apr\u00e8s l\u2019avoir tremp\u00e9 dans son infusion de th\u00e9 ou de "
+              + "tilleul.",
+      text: "That taste was the taste of the little piece of madeleine that [...] my "
+          + "aunt L\u00e9onie used to give me, after dipping it in her infusion of tea or "
+          + "lime blossom.",
+      verified: true,
+      modes: { taste: ["tea", "madeleine"], smell: ["infusion", "blossom", "lime"] },
+      aff: { valence: 0.8, arousal: 0.2 },
+    },
   ];
 
   /* TO ADD AN ENTRY \u2014 the process, so it stays honest:
