@@ -253,6 +253,7 @@
 <script src="bb-artist-lens.js"></script>
 <script src="bb-audio-lens.js"></script>
 <script src="bb-vision.js"></script>
+<script src="bb-gallery.js"></script>
 <script src="bb-music.js"></script>
 </head>
 <body>
@@ -1219,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-epigraph";
+  const BUILD = "2026-08-24-gallery";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -1357,7 +1358,10 @@ BOUNDARIES
   // ============================================================
   const SENSE_LEX = {
     sight: ("saw see seeing watched watching looked looking stared glimpse dark darkness bright light " +
-      "lit dim shadow glow flash colour color blurry clear visible invisible").split(" "),
+      "lit dim shadow glow flash colour color blurry clear visible invisible "
+      + "blue green yellow red violet purple orange pink white black grey gray brown "
+      + "gold silver amber crimson scarlet azure indigo turquoise beige cream "
+      + "sky stars star sun moon night day dawn dusk sunset sunrise light").split(" "),
     sound: ("heard hear hearing sound noise loud quiet silence silent muffled echo ringing buzzing " +
       "humming music song singing shouting yelling whisper whispered voice footsteps").split(" "),
     touch: ("cold freezing chill warm hot burning heat damp wet dry rough smooth soft hard heavy light " +
@@ -3964,6 +3968,30 @@ Rules:
         + e.artist + " was writing about " + e.works[0].title
         + " by " + e.works[0].by + " \u2014 you may mention it by name.";
     }
+
+    /* WHERE A SUGGESTION COMES FROM.
+       
+       Asked for a piece of music or a painting, the model will name one
+       from general knowledge \u2014 fluent, usually right, and nothing in this
+       system checks it. That is the one place the whole discipline does
+       not reach.
+       
+       When the corpus has a work or a canvas attached to the matched
+       passage, it can supply the answer instead, and the chain is:
+       their texture \u2192 a passage that shares it \u2192 the thing that passage was
+       actually about \u2192 cited. Nothing invented at any step.
+       
+       When it has nothing, the model may still answer \u2014 but it is told to
+       say the difference, so an ungrounded suggestion is visibly one. */
+    if (e.painting && e.painting.url) {
+      out += " There is also a painting this passage is about: "
+        + e.painting.title + " (" + e.painting.year + "), public domain, at "
+        + e.painting.url + ". You may name it and give the link.";
+    }
+    out += " If they ask for something to see or hear and nothing above fits, "
+      + "you may suggest from your own knowledge \u2014 but say plainly that it is "
+      + "your own suggestion rather than something from these accounts, and do "
+      + "not invent a link.";
     return out;
   }
 
