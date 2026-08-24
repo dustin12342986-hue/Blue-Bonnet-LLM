@@ -1220,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-panelfix";
+  const BUILD = "2026-08-24-criterion";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -2170,6 +2170,49 @@ BOUNDARIES
       .map((r) => ({ item: byId[r.label], sim: r.sim }))
       .filter((r) => r.item);
   }
+  /* ============================================================
+     A THING YOU PLAYED IS A MOMENT YOU HAD
+
+     Listening measured a piece and then threw the measurement away. But
+     putting something on is an episode: you were there, it had texture,
+     it had a feeling. Storing it means the pairing engine can cross a
+     piece you played in March with something you said in June \u2014 sensory
+     input arriving as measurement, entering the crossing on the same
+     footing as words.
+
+     Only on a deliberate play. The file was chosen, the panel was open;
+     that is an act, not background noise. And only when qualities
+     actually HELD across the piece \u2014 a few frames of nothing is not a
+     memory of anything.
+     ============================================================ */
+
+  function recordListenEpisode(title, qualities) {
+    if (!qualities || !qualities.length) return null;
+    const name = String(title || "something").slice(0, 120);
+    // Written as the person's own line, because that is what it is: they
+    // put this on. The reflection rules can then treat it like anything
+    // else they said.
+    const text = "I played " + name + ".";
+    const ep = {
+      id: "ep" + Date.now().toString(36),
+      at: Date.now(),
+      kind: "listened",
+      turns: [{ role: "user", text: text }],
+      affect: affectOf(text),
+      // The texture is MEASURED, not read off the title. Marked so it can
+      // be told apart from a word someone wrote.
+      sensory: { modes: { sound: qualities.slice() },
+                 count: qualities.length, measured: true },
+      played: { title: name, qualities: qualities.slice() },
+    };
+    memory.episodes = memory.episodes || [];
+    memory.episodes.push(ep);
+    pruneEpisodes();
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbRecordListen = (t, q) => recordListenEpisode(t, q); } catch (e) {}
+
   function recordEpisode(turns) {
     if (!turns || !turns.length) return;
     memory.episodes = memory.episodes || [];
@@ -3922,7 +3965,8 @@ Rules:
     const know = relevantKnowledge(queryText, recent);
     const mem = buildMemoryContext(queryText);
     markAsked(queryText || "");
-    const volatile = (know + (mem || "") + artistAside(queryText)).trim();
+    startGalleryPick(queryText);
+    const volatile = (know + (mem || "") + artistAside(queryText) + galleryAside()).trim();
     if (volatile) blocks.push({ type: "text", text: volatile });
     return blocks;
   }
@@ -3944,6 +3988,59 @@ Rules:
      the failure mode here, so the note says so explicitly.
      ============================================================ */
 
+  /* ============================================================
+     ASKING FOR A PAINTING
+
+     The corpus can only name a canvas that was attached to a passage by
+     hand \u2014 one verified so far. So "show me a painting" almost always
+     fell through to the model, ungrounded.
+
+     The gallery is the other way: measure real public-domain canvases and
+     let the texture pick one. That is retrieval, and it is anti-similar by
+     construction \u2014 a painting carries only measurements here, no subject,
+     so nothing can match on what it depicts.
+
+     Measuring costs a network round trip per canvas, so it is only started
+     when someone actually asks to see something. The result arrives after
+     the reply and is offered on the next turn rather than blocking this
+     one \u2014 a pause of several seconds in the middle of a conversation would
+     cost more than the picture is worth.
+     ============================================================ */
+
+  let galleryPick = null;          // last painting the texture chose
+  let galleryBusy = false;
+
+  function wantsToSee(text) {
+    return /\b(paint|painting|picture|art|artwork|canvas|show me something|see something)\b/i
+      .test(String(text || ""));
+  }
+
+  function startGalleryPick(queryText) {
+    if (galleryBusy || typeof BBGallery === "undefined") return;
+    if (!wantsToSee(queryText)) return;
+    galleryBusy = true;
+    let sig, aff;
+    try { sig = sensoryOf(String(queryText)); aff = affectOf(String(queryText)); }
+    catch (e) { galleryBusy = false; return; }
+    BBGallery.pickFor(sig, aff, "vangogh", { n: 12 })
+      .then((r) => { galleryPick = r || null; })
+      .catch(() => { galleryPick = null; })
+      .then(() => { galleryBusy = false; });
+  }
+
+  function galleryAside() {
+    if (!galleryPick || !galleryPick.painting) return "";
+    const g = galleryPick.painting;
+    const shared = (galleryPick.shared || []).slice(0, 3).join(", ");
+    galleryPick = null;            // offered once, not on every message after
+    return "\n\nA PAINTING THE TEXTURE CHOSE\n"
+      + "This was not picked from what you know. A set of public-domain canvases "
+      + "was measured, and this one shares the texture (" + shared + "): "
+      + g.title + " by " + g.painter + " \u2014 " + g.url + "\n"
+      + "You may offer it with the link. Say what it shares if it helps, but never "
+      + "say what the painting means or what the painter felt. If it does not fit "
+      + "what they said, ignore it.";
+  }
   function artistAside(queryText) {
     if (typeof BBLens === "undefined" || !queryText) return "";
     let hit = null;
@@ -3988,10 +4085,26 @@ Rules:
         + e.painting.title + " (" + e.painting.year + "), public domain, at "
         + e.painting.url + ". You may name it and give the link.";
     }
-    out += " If they ask for something to see or hear and nothing above fits, "
-      + "you may suggest from your own knowledge \u2014 but say plainly that it is "
-      + "your own suggestion rather than something from these accounts, and do "
-      + "not invent a link.";
+    /* THE LENS DECIDES WHAT COUNTS; THE MODEL SUPPLIES THE CANDIDATE.
+       
+       The corpus cannot hold all the music and painting in the world, and
+       an ungrounded suggestion from general knowledge is the one place
+       this system's discipline does not reach. But the corpus does not
+       need the catalogue \u2014 it needs the CRITERION. The texture that
+       crossed is the criterion, and it is anti-similar: chosen for what it
+       shares in feel, with the subject subtracted.
+       
+       So: the model may name the piece, but only one that carries THIS
+       texture. Not one about their situation. Choosing on subject is the
+       ordinary move and it is the wrong one here. */
+    out += "\n\nIF THEY ASK FOR SOMETHING TO SEE OR HEAR\n"
+      + "The texture that crossed is: " + (hit.shared || []).join(", ") + ". That is the "
+      + "criterion, and it is the whole point \u2014 anything you suggest must carry THAT "
+      + "texture, not be about their subject. A piece that matches what they are going "
+      + "through is the ordinary choice and the wrong one; a piece that FEELS like this "
+      + "and is about something else entirely is the right one. Say which texture it "
+      + "shares so they can tell whether it lands. Say plainly when the piece is your own "
+      + "suggestion rather than one of these accounts, and never invent a link.";
     return out;
   }
 
@@ -5135,6 +5248,7 @@ Rules:
      ============================================================ */
 
   let listenSeen = [];       // qualities across the whole listen
+  let listenStored = false;  // one episode per piece, not per pause
   let listenStop = null;
 
   function listenQualities() {
@@ -5156,6 +5270,16 @@ Rules:
     measure.textContent = listenSeen.length
       ? "measured over " + listenSeen.length + " frames \u2014 " + (q.join(", ") || "nothing held")
       : "";
+
+    // Keep it. Once per piece, not once per pause.
+    if (q.length && listenSeen.length >= 40 && !listenStored) {
+      listenStored = true;
+      try {
+        const f = document.getElementById("listenFile");
+        const name = (f && f.files && f.files[0] && f.files[0].name) || "";
+        recordListenEpisode(name.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " "), q);
+      } catch (e) {}
+    }
     result.innerHTML = "";
     if (!q.length) return;
 
@@ -5230,6 +5354,7 @@ Rules:
       // Read locally. Nothing leaves the device.
       audio.src = URL.createObjectURL(f);
       listenSeen = [];
+      listenStored = false;
       renderListen();
       audio.play().catch(() => {});
     };
