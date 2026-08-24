@@ -121,8 +121,10 @@
     background: var(--panel2); color: var(--muted); cursor: pointer; display: flex; align-items: center;
     justify-content: center; flex-shrink: 0; }
   #voiceSettingsBtn:hover { color: var(--text); }
+  #listenPanel,
   #dreamsPanel { display: none; position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.6);
     align-items: center; justify-content: center; padding: 20px; }
+  #listenPanel.show,
   #dreamsPanel.show { display: flex; }
   .dream-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
     padding: 11px 12px; margin-bottom: 9px; }
@@ -244,6 +246,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="bb-artist-lens.js"></script>
 <script src="bb-audio-lens.js"></script>
+<script src="bb-music.js"></script>
 </head>
 <body>
   <header>
@@ -256,6 +259,9 @@
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
       <span>Conversation</span>
     </button>
+    <button id="listenBtn" title="Play it something">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    </button>
     <button id="dreamsBtn" title="Dream journal">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
@@ -266,6 +272,21 @@
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </header>
+
+  <div id="listenPanel">
+    <div class="voice-card">
+      <h2>Play it something</h2>
+      <p class="sub">It measures what it hears \u2014 brightness, thickness, roughness,
+        tension \u2014 and looks for someone who wrote about that same texture. Your own
+        recordings work, and so does anything public domain (musopen.org and imslp.org
+        both have a lot). Nothing is uploaded; the analysis happens here.</p>
+      <input id="listenFile" type="file" accept="audio/*" style="margin:10px 0" />
+      <audio id="listenAudio" controls style="width:100%;margin:6px 0"></audio>
+      <p id="listenMeasure" class="sub" style="font-family:ui-monospace,Menlo,monospace;font-size:11px"></p>
+      <div id="listenResult"></div>
+      <button id="listenCloseBtn" class="more-btn" style="margin-top:10px">Close</button>
+    </div>
+  </div>
 
   <div id="dreamsPanel">
     <div class="voice-card">
@@ -474,7 +495,7 @@
   // swallow every click on the page. Neutralise any that aren't ours.
   function disarmOverlays() {
     document.querySelectorAll("body > div, body > button").forEach(function (el) {
-      if (el.closest("#onboarding, #voicePanel, #chatsPanel, #dreamsPanel, #chatBody, #inputRow, header, #attachPreview")) return;
+      if (el.closest("#onboarding, #voicePanel, #chatsPanel, #dreamsPanel, #listenPanel, #chatBody, #inputRow, header, #attachPreview")) return;
       if (el.id && /^(onboarding|voicePanel|chatBody|inputRow|attachPreview)$/.test(el.id)) return;
       var cs = window.getComputedStyle(el);
       if (cs.position === "fixed" && cs.pointerEvents !== "none") {
@@ -1182,7 +1203,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-voice";
+  const BUILD = "2026-08-24-music";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -3881,9 +3902,53 @@ Rules:
     const know = relevantKnowledge(queryText, recent);
     const mem = buildMemoryContext(queryText);
     markAsked(queryText || "");
-    const volatile = (know + (mem || "")).trim();
+    const volatile = (know + (mem || "") + artistAside(queryText)).trim();
     if (volatile) blocks.push({ type: "text", text: volatile });
     return blocks;
+  }
+
+  /* ============================================================
+     SOMEONE ELSE'S ACCOUNT OF THE SAME TEXTURE
+
+     Until now the corpus only reached the dream path, so in conversation
+     it was loaded and idle. This puts it where it can actually be used.
+
+     It goes in the VOLATILE block, not the cached one, and only when a
+     rare texture matches \u2014 so most messages carry nothing and cost
+     nothing. Twenty-seven passages riding along on every message would be
+     a permanent token cost for a thing that rarely applies.
+
+     The instruction is narrow on purpose. The feeling rule says stay with
+     what they said, and a Van Gogh line is the most tempting thing in the
+     prompt to reach for. A reply ABOUT the quote instead of about them is
+     the failure mode here, so the note says so explicitly.
+     ============================================================ */
+
+  function artistAside(queryText) {
+    if (typeof BBLens === "undefined" || !queryText) return "";
+    let hit = null;
+    try {
+      hit = BBLens.lens(sensoryOf(String(queryText)), affectOf(String(queryText)));
+    } catch (e) { return ""; }
+    if (!hit) return "";
+    const e = hit.entry;
+    let out = "\n\nAN OLDER ACCOUNT OF THE SAME TEXTURE\n"
+      + "Someone wrote about this same texture long ago. Their own words, not a "
+      + "reading of them: \u201c" + e.text + "\u201d \u2014 " + e.artist + ", " + e.source
+      + ". Original: " + e.original + "\n"
+      + "Use it ONLY if it genuinely fits what they just said. Their words come "
+      + "first and this is an aside at most \u2014 never let the reply become about "
+      + "the quote instead of about them. Never claim the artist felt what they "
+      + "feel and never say what it means. If it does not fit, ignore it "
+      + "completely and say nothing about it.";
+    // A piece is named only where the passage itself named it, so pointing
+    // at something to go and hear invents nothing.
+    if (e.works && e.works.length) {
+      out += " If they would welcome something to listen to or look at, "
+        + e.artist + " was writing about " + e.works[0].title
+        + " by " + e.works[0].by + " \u2014 you may mention it by name.";
+    }
+    return out;
   }
 
 
@@ -5006,6 +5071,139 @@ Rules:
 
   function openDreams() { renderDreams(); document.getElementById("dreamsPanel").classList.add("show"); }
   function closeDreams() { document.getElementById("dreamsPanel").classList.remove("show"); }
+
+  /* ============================================================
+     PLAY IT SOMETHING
+
+     Every other sense in here arrives as words. This is the one that
+     arrives as measurement: real audio, analysed in the browser, four
+     features from the spectrum. Brightness, thickness, roughness, tension.
+
+     Those come out in the SAME vocabulary the artist corpus uses \u2014 words
+     the writers themselves used \u2014 so a recording and a Van Gogh letter can
+     reach each other through "dark" or "rough". No frequency was mapped to
+     a colour, because that mapping is arbitrary and three famous people
+     built three incompatible versions of it.
+
+     Nothing is uploaded. The file is read locally and analysed locally.
+     Which also means your own recordings work, and there is no rights
+     question about them at all.
+     ============================================================ */
+
+  let listenSeen = [];       // qualities across the whole listen
+  let listenStop = null;
+
+  function listenQualities() {
+    if (!listenSeen.length) return [];
+    const count = Object.create(null);
+    listenSeen.forEach((qs) => qs.forEach((q) => { count[q] = (count[q] || 0) + 1; }));
+    // What held for a good part of the piece, not one frame of it. A frame
+    // is about 16ms and says almost nothing on its own.
+    const need = listenSeen.length * 0.3;
+    return Object.keys(count).filter((q) => count[q] >= need);
+  }
+
+  function renderListen() {
+    const q = listenQualities();
+    const measure = document.getElementById("listenMeasure");
+    const result = document.getElementById("listenResult");
+    if (!measure || !result) return;
+
+    measure.textContent = listenSeen.length
+      ? "measured over " + listenSeen.length + " frames \u2014 " + (q.join(", ") || "nothing held")
+      : "";
+    result.innerHTML = "";
+    if (!q.length) return;
+
+    let hit = null;
+    try {
+      hit = (typeof BBLens !== "undefined")
+        ? BBLens.lens({ modes: { sound: q } }, { valence: 0.3, arousal: 0.5 },
+                      { allowSmallCorpus: true })
+        : null;
+    } catch (e) { hit = null; }
+
+    if (!hit) {
+      const p = document.createElement("p");
+      p.className = "sub";
+      p.textContent = "Nothing in the corpus shares that texture. That is the common "
+        + "answer and the honest one.";
+      result.appendChild(p);
+      return;
+    }
+
+    const e = hit.entry;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:10px;padding:12px;border-radius:10px;"
+      + "border:1px solid var(--border)";
+    const quote = document.createElement("div");
+    quote.textContent = "\u201c" + e.text + "\u201d";
+    quote.style.cssText = "margin-bottom:6px";
+    wrap.appendChild(quote);
+    const who = document.createElement("div");
+    who.className = "sub";
+    who.style.fontSize = "12px";
+    who.textContent = e.artist + " \u2014 " + e.source
+      + (e.sourcing === "corroborated" ? " (corroborated, not from the manuscript)" : "");
+    wrap.appendChild(who);
+    const orig = document.createElement("div");
+    orig.className = "sub";
+    orig.style.cssText = "font-size:11px;margin-top:6px;opacity:.7";
+    orig.textContent = e.original;
+    wrap.appendChild(orig);
+    const why = document.createElement("div");
+    why.className = "sub";
+    why.style.cssText = "font-size:11px;margin-top:6px";
+    why.textContent = "matched on: " + hit.shared.join(", ");
+    wrap.appendChild(why);
+    if (e.works && e.works.length) {
+      const wk = document.createElement("div");
+      wk.className = "sub";
+      wk.style.cssText = "font-size:12px;margin-top:6px";
+      wk.textContent = "They were writing about " + e.works[0].title + " by " + e.works[0].by + ".";
+      wrap.appendChild(wk);
+    }
+    result.appendChild(wrap);
+  }
+
+  (function wireListen() {
+    const open = () => document.getElementById("listenPanel").classList.add("show");
+    const close = () => {
+      try { if (listenStop) listenStop(); } catch (e) {}
+      listenStop = null;
+      document.getElementById("listenPanel").classList.remove("show");
+    };
+    const b = document.getElementById("listenBtn"); if (b) b.onclick = open;
+    const c = document.getElementById("listenCloseBtn"); if (c) c.onclick = close;
+
+    const file = document.getElementById("listenFile");
+    const audio = document.getElementById("listenAudio");
+    if (!file || !audio) return;
+
+    file.onchange = () => {
+      const f = file.files && file.files[0];
+      if (!f) return;
+      // Read locally. Nothing leaves the device.
+      audio.src = URL.createObjectURL(f);
+      listenSeen = [];
+      renderListen();
+      audio.play().catch(() => {});
+    };
+
+    audio.onplay = () => {
+      if (listenStop || typeof BBAudio === "undefined") return;
+      try {
+        const h = BBAudio.listen(audio, (m) => {
+          if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        });
+        listenStop = h.stop;
+      } catch (e) { listenStop = null; }
+    };
+    // Match when it stops, not continuously \u2014 a piece has to be heard
+    // through before what held becomes clear.
+    audio.onpause = renderListen;
+    audio.onended = renderListen;
+  })();
 
   (function wireDreams() {
     const b = document.getElementById("dreamsBtn");

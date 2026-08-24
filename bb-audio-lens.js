@@ -242,7 +242,109 @@
     return { stop: function () { running = false; try { ctx.close(); } catch (e) {} } };
   }
 
+  /* ---- analysing a recording -------------------------------------------
+
+     The loop this completes: a public-domain recording plays, its spectrum
+     is measured, the measured qualities go into the artist lens, and it
+     finds the passage that shares them. Sound arriving as sound rather
+     than as somebody's description of it.
+
+     Deliberately muted by default. The point is measurement, and a track
+     starting unbidden at 2am is not what anyone wants.
+
+     CORS matters: the audio must be served with permissive headers or the
+     analyser reads silence. archive.org does; most sites do not. A failure
+     is reported rather than returning a confident empty answer, because a
+     silent read looks exactly like a quiet piece.
+  */
+  function analyseUrl(url, opts) {
+    opts = opts || {};
+    const seconds = opts.seconds || 12;
+    return new Promise(function (resolve, reject) {
+      if (typeof global.AudioContext === "undefined" || typeof global.Audio === "undefined") {
+        return reject(new Error("no Web Audio in this environment"));
+      }
+      const el = new global.Audio();
+      el.crossOrigin = "anonymous";      // required, or the analyser reads zeros
+      el.src = url;
+      el.muted = opts.audible !== true;
+      el.preload = "auto";
+
+      let ctx, an, src, timer, raf;
+      const frames = [];
+      let prev = null;
+
+      function cleanup() {
+        try { if (raf) global.cancelAnimationFrame(raf); } catch (e) {}
+        try { if (timer) clearTimeout(timer); } catch (e) {}
+        try { el.pause(); } catch (e) {}
+        try { if (ctx) ctx.close(); } catch (e) {}
+      }
+
+      el.onerror = function () { cleanup(); reject(new Error("could not load audio: " + url)); };
+
+      el.oncanplay = function () {
+        try {
+          ctx = new global.AudioContext();
+          src = ctx.createMediaElementSource(el);
+          an = ctx.createAnalyser();
+          an.fftSize = opts.fftSize || 2048;
+          an.smoothingTimeConstant = 0.5;
+          src.connect(an);
+          if (opts.audible === true) an.connect(ctx.destination);
+        } catch (e) { cleanup(); return reject(e); }
+
+        const bins = new Uint8Array(an.frequencyBinCount);
+        function tick() {
+          an.getByteFrequencyData(bins);
+          const arr = Array.from(bins);
+          const m = measure({ bins: arr, prev: prev, sampleRate: ctx.sampleRate, fftSize: an.fftSize });
+          if (m.qualities.length) frames.push(m);
+          prev = arr;
+          raf = global.requestAnimationFrame(tick);
+        }
+
+        el.play().then(function () {
+          tick();
+          timer = setTimeout(function () {
+            cleanup();
+            if (!frames.length) {
+              // Almost always CORS. Saying "quiet piece" here would be a lie.
+              return reject(new Error("read only silence \u2014 the audio is probably "
+                + "not CORS-accessible, so the analyser saw zeros"));
+            }
+            resolve(summarise(frames));
+          }, seconds * 1000);
+        }).catch(function (e) { cleanup(); reject(e); });
+      };
+    });
+  }
+
+  /* One frame is about 16ms and says nothing. What holds across the passage
+     is the piece. Same 40% rule the voice texture uses. */
+  function summarise(frames) {
+    const count = Object.create(null);
+    frames.forEach(function (f) {
+      f.qualities.forEach(function (q) { count[q] = (count[q] || 0) + 1; });
+    });
+    const need = frames.length * 0.4;
+    const qualities = Object.keys(count).filter(function (q) { return count[q] >= need; });
+    const avg = function (k) {
+      return frames.reduce(function (a, f) { return a + (f[k] || 0); }, 0) / frames.length;
+    };
+    return {
+      frames: frames.length,
+      qualities: qualities,
+      centroidHz: Math.round(avg("centroidHz")),
+      centroidNorm: avg("centroidNorm"),
+      spreadNorm: avg("spreadNorm"),
+      flux: avg("flux"),
+    };
+  }
+
   global.BBAudio = {
+    analyseUrl: analyseUrl,
+    summarise: summarise,
     qualitiesOfSound: qualitiesOfSound,
     measure: measure,
     listen: listen,
