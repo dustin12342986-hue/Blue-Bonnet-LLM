@@ -74,6 +74,12 @@
       search: "Claude Monet painting oil canvas" },
   ];
 
+  /* Lost once already: a rewrite of the block above removed these and
+     every call threw "cache is not defined" \u2014 which surfaced as the
+     gallery silently never working. Declared here, near their use. */
+  let cache = Object.create(null);      // painter key -> [{title,url}]
+  let measured = Object.create(null);   // url -> measurement
+
   function painters() {
     return PAINTERS.map(function (p) {
       return { key: p.key, name: p.name, died: p.died, category: p.category };
