@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-once";
+  const BUILD = "2026-08-24-chain";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2193,6 +2193,68 @@ BOUNDARIES
      actually HELD across the piece \u2014 a few frames of nothing is not a
      memory of anything.
      ============================================================ */
+
+  /* ============================================================
+     THE CHAIN HAS TO COMPLETE.
+
+       harmonic on both ends
+         \u2192 a sensory input leads to
+           \u2192 emotions and connection
+             \u2192 which create MEMORY
+
+     The lens was doing the first step and stopping. A texture crossed, a
+     passage appeared on screen, and then it evaporated \u2014 nothing produced,
+     nothing kept. That is a bridge with nothing on the far side of it.
+
+     A crossing IS an event. Two ends, a carrier between them, and the
+     feeling and the connection are what come out. So it is written into
+     memory like any other moment, and it can be paired, dreamt on, and
+     returned to later.
+
+     What is stored is the crossing itself, not the passage. The passage is
+     one end of it.
+     ============================================================ */
+
+  function recordCrossing(mine, theirs, carrier, opts) {
+    if (!theirs || !carrier || !carrier.length) return null;
+    opts = opts || {};
+    const ep = {
+      id: "cr" + Date.now().toString(36),
+      at: Date.now(),
+      kind: "crossing",
+      // Written as the person's own line: this happened to them.
+      turns: [{ role: "user", text:
+        "Something I " + (opts.verb || "took in") + " crossed with "
+        + (theirs.artist || theirs.source || "something written")
+        + " on " + carrier.join(", ") + ". Their words: \u201c"
+        + String(theirs.text || "").slice(0, 300) + "\u201d" }],
+      crossing: {
+        // the two ends
+        mine: { modes: (mine && mine.modes) || {}, measured: !!opts.measured },
+        theirs: { source: theirs.source || theirs.artist || null,
+                  cite: theirs.cite || null,
+                  text: String(theirs.text || "").slice(0, 600),
+                  verified: theirs.verified !== false },
+        // the carrier between them
+        carrier: carrier.slice(),
+        // what came OUT of it \u2014 not what selected it
+        emotion: theirs.aff || null,
+        connection: opts.connection || null,
+      },
+      sensory: { modes: Object.assign({}, (mine && mine.modes) || {}),
+                 count: carrier.length, measured: !!opts.measured },
+      // The feeling on the episode is the one the crossing PRODUCED, which
+      // is the passage's, not the person's. That is the whole point of
+      // taking affect out of the selection.
+      affect: theirs.aff || { valence: 0, arousal: 0.4 },
+    };
+    memory.episodes = memory.episodes || [];
+    memory.episodes.push(ep);
+    pruneEpisodes();
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbRecordCrossing = (a, b, c, o) => recordCrossing(a, b, c, o); } catch (e) {}
 
   function recordListenEpisode(title, qualities) {
     if (!qualities || !qualities.length) return null;
@@ -4054,7 +4116,13 @@ Rules:
                  noteSupplied(r.painting.page, null);
                  suppliedTexture = (r.shared || []).map(function (x) { return String(x).toLowerCase(); });
                  paintingShown = true;
-                 showPainting(r); } })
+                 showPainting(r);
+                 try {
+                   recordCrossing(sig, { source: r.painting.title,
+                     artist: r.painting.painter, text: r.painting.title,
+                     cite: r.painting.page || r.painting.url, verified: true,
+                     aff: null }, r.shared, { measured: true, verb: "was describing" });
+                 } catch (e) {} } })
       .catch(() => { galleryPick = null; })
       .then(() => { galleryBusy = false; });
   }
@@ -5514,6 +5582,7 @@ Rules:
   let listenSeen = [];       // qualities across the whole listen
   let listenStored = false;  // one episode per piece, not per pause
   let liveTried = false;     // the wide pull happens once, not every 20 frames
+  let crossingStored = false;// one memory per crossing, not per render
   let listening_ = false;    // true while a stream is still running
   let listenStop = null;
 
@@ -5595,6 +5664,15 @@ Rules:
         : null;
     } catch (e) { hit = null; }
 
+    // The chain completes here: a crossing happened, so a memory is made.
+    if (hit && !listening_ && !crossingStored) {
+      crossingStored = true;
+      try {
+        recordCrossing({ modes: { sound: q } }, hit.entry, hit.shared,
+          { measured: true, verb: "heard" });
+      } catch (e) {}
+    }
+
     /* NOTHING CURATED CROSSED \u2014 SO LOOK WIDER.
 
        The curated corpus is 29 passages and most textures will not be in
@@ -5650,6 +5728,10 @@ Rules:
             + "  \u00b7  live from Wikisource, not verified";
           c.appendChild(sh);
           result.appendChild(c);
+          try {
+            recordCrossing({ modes: { sound: q } }, live.entry, live.shared,
+              { measured: true, verb: "heard" });
+          } catch (e) {}
         })
         .catch(function () {
           note.textContent = "Nothing verified shares that texture, and the wider "
@@ -5722,6 +5804,7 @@ Rules:
       audio.src = URL.createObjectURL(f);
       listenSeen = [];
       liveTried = false;
+      crossingStored = false;
       listening_ = true;
       listenStored = false;
       renderListen();
@@ -5752,6 +5835,7 @@ Rules:
       listenSeen = [];
       listenStored = false;
       liveTried = false;
+      crossingStored = false;
       BBAudio.listenToTab((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
         if (listenSeen.length % 20 === 0) renderListen();
