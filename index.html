@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-hunt";
+  const BUILD = "2026-08-25-scanning";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4259,6 +4259,8 @@ Rules:
     try { BBGallery.measureAll("oil painting landscape portrait 19th century", 20).catch(() => {}); } catch (e) {}
   }
   setTimeout(warmGallery, 12000);
+  // The scanner runs for as long as the app is open.
+  setTimeout(function () { try { startScanning(); } catch (e) {} }, 8000);
 
   /* SHOW IT DIRECTLY.
 
@@ -4517,6 +4519,8 @@ Rules:
   function artistAside(queryText) {
     if (typeof BBLens === "undefined" || !queryText) return "";
     startWideSearch(queryText);
+    // Anything said feeds the scanner too. Any sense, any source.
+    try { feedScanner(sensoryOf(String(queryText)).modes, affectOf(String(queryText))); } catch (e) {}
     let hit = null;
     try {
       hit = BBLens.lens(sensoryOf(String(queryText)), affectOf(String(queryText)));
@@ -5870,6 +5874,70 @@ Rules:
      turns blue. Most listens end with nothing, and the counter is the
      evidence that the refusal was real. */
 
+  /* ============================================================
+     ALWAYS SCANNING.
+
+     The hunt only ran while the mic was open, and it stopped on the first
+     crossing. Neither is how this works. Nothing scans the world for a few
+     seconds and then quits because it found something once \u2014 it keeps
+     going, and the crossings arrive when they arrive.
+
+     So this runs for as long as the app is open, against whatever sensory
+     input is most recent: what is playing, what was just said, the last
+     episode. It never stops on a hit. It records the crossing and carries
+     on scanning.
+
+     Paced so it does not hammer anything: a batch every few seconds, and
+     it idles when there is no sensory input to scan against.
+     ============================================================ */
+
+  let scanning = false;
+  let lastSignature = null;      // whatever came in most recently, any sense
+  let scanCount = 0, scanCrossed = 0;
+
+  function feedScanner(modes, aff) {
+    if (!modes || !Object.keys(modes).length) return;
+    lastSignature = { modes: modes, aff: aff || { valence: 0, arousal: 0.4 } };
+  }
+  try { window.__bbFeed = (m, a) => feedScanner(m, a); } catch (e) {}
+
+  async function startScanning() {
+    if (scanning || typeof BBLens === "undefined" || !BBLens.anyLens) return;
+    scanning = true;
+    while (scanning) {
+      if (!lastSignature) { await sleep(3000); continue; }
+      const sig = lastSignature;
+      try {
+        const best = await BBLens.anyLens(sig, sig.aff,
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
+            onConsider: function () { scanCount++; } });
+        if (best) {
+          scanCrossed++;
+          // It landed. Record it and keep going \u2014 that is the difference.
+          try {
+            recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
+              best.shared || [], { autonomous: true, measured: true,
+                                   sameSubject: best.sameSubject, verb: "was taking in" });
+          } catch (e) {}
+          try { onScanCrossing(best, sig); } catch (e) {}
+        }
+      } catch (e) { /* keep scanning */ }
+      await sleep(scanPause());
+    }
+  }
+  function scanPause() { return 2500 + Math.floor(Math.random() * 2000); }
+  function stopScanning() { scanning = false; }
+  try {
+    window.__bbScan = () => ({ running: scanning, weighed: scanCount,
+                               crossed: scanCrossed,
+                               feeding: !!lastSignature });
+    window.__bbStopScan = stopScanning;
+  } catch (e) {}
+
+  // Where a scan crossing surfaces. Quiet by default \u2014 it goes into the
+  // journal; the panel only shows it if it happens to be open.
+  let onScanCrossing = function () {};
+
   let huntStop = false;
   let huntRan = false;   // a continuous hunt makes the one-shot redundant
 
@@ -6219,7 +6287,10 @@ Rules:
       BBAudio.listenToTab((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
         listenFrames.push(m);          // raw, for track-relative labelling
-        if (listenSeen.length % 20 === 0) renderListen();
+        if (listenSeen.length % 20 === 0) {
+          renderListen();
+          try { feedScanner({ sound: listenQualities() }); } catch (e) {}
+        }
       }).then((h) => {
         listenStop = h.stop;
         listening_ = true;
@@ -6254,7 +6325,10 @@ Rules:
       BBAudio.listenToRoom((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
         listenFrames.push(m);
-        if (listenSeen.length % 20 === 0) renderListen();
+        if (listenSeen.length % 20 === 0) {
+          renderListen();
+          try { feedScanner({ sound: listenQualities() }); } catch (e) {}
+        }
       }).then((h) => {
         listenStop = h.stop;
         listening_ = true;
