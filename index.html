@@ -1220,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-relative";
+  const BUILD = "2026-08-24-anyart";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -4037,8 +4037,16 @@ Rules:
       sig = sensoryOf(source);
       aff = affectOf(recent || String(queryText));
     } catch (e) { galleryBusy = false; return; }
-    BBGallery.pickFor(sig, aff, "vangogh", { n: 5 })
-      .then((r) => { galleryPick = r || null; })
+    // Five was too few for a positional threshold: "the darkest of these"
+    // picked a bright yellow canvas because the set had nothing darker.
+    // Twenty gives the position something real to sit against.
+    BBGallery.pickFor(sig, aff, gallerySearchFor(queryText), { n: 20 })
+      .then((r) => { galleryPick = r || null;
+        if (r) { noteSupplied(r.painting.url, null);
+                 noteSupplied(r.painting.page, null);
+                 suppliedTexture = (r.shared || []).map(function (x) { return String(x).toLowerCase(); });
+                 paintingShown = true;
+                 showPainting(r); } })
       .catch(() => { galleryPick = null; })
       .then(() => { galleryBusy = false; });
   }
@@ -4050,9 +4058,192 @@ Rules:
   function warmGallery() {
     if (galleryWarmed || typeof BBGallery === "undefined") return;
     galleryWarmed = true;
-    try { BBGallery.measureAll("vangogh", 5).catch(() => {}); } catch (e) {}
+    try { BBGallery.measureAll("oil painting landscape portrait 19th century", 20).catch(() => {}); } catch (e) {}
   }
   setTimeout(warmGallery, 12000);
+
+  /* SHOW IT DIRECTLY.
+
+     The painting was being handed to the model as an instruction, and the
+     model kept naming something else with a link it invented. An
+     instruction is a request; five rounds of patching the request did not
+     make it a mechanism.
+
+     So the pick renders itself. No prompt to ignore, no timing to miss, no
+     link to invent \u2014 the image that was measured is the image that
+     appears. The model can still talk about it; it just cannot replace it.
+  */
+  function showPainting(pick) {
+    try {
+      const g = pick.painting;
+      if (!g || !g.url) return;
+      const row = document.createElement("div");
+      row.className = "row assistant";
+      const b = document.createElement("div");
+      b.className = "bubble";
+
+      const img = document.createElement("img");
+      img.src = g.url;
+      img.alt = g.title;
+      img.loading = "lazy";
+      img.style.cssText = "width:100%;border-radius:8px;display:block";
+      b.appendChild(img);
+
+      const cap = document.createElement("div");
+      cap.style.cssText = "font-size:12px;opacity:.7;margin-top:8px";
+      cap.textContent = g.title + " \u2014 " + g.painter
+        + "  \u00b7  shares: " + (pick.shared || []).join(", ");
+      b.appendChild(cap);
+
+      const src = document.createElement("a");
+      src.href = g.page || g.url;
+      src.target = "_blank";
+      src.rel = "noopener";
+      src.textContent = "public domain, via Wikimedia Commons";
+      src.style.cssText = "font-size:11px;opacity:.55;display:block;margin-top:4px";
+      b.appendChild(src);
+
+      row.appendChild(b);
+      bodyEl.appendChild(row);
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    } catch (e) {}
+  }
+
+  /* ============================================================
+     AUDITING THE REPLY
+
+     An instruction is a request. "Never invent a link" was written into
+     the prompt five separate times today and ignored every time \u2014 not
+     because the wording was weak, but because a model producing fluent
+     text produces the fluent thing. Rewriting the request never turns it
+     into a constraint.
+
+     So this checks the output instead. Anything the model asserts that
+     the system did not supply is removed before it reaches the person.
+     It cannot be stopped from saying things; it can be stopped from
+     saying them TO YOU.
+
+     Deliberately narrow. It strips claims that can be checked against
+     what was actually handed over \u2014 links, and quotes attributed to the
+     corpus. It does not touch the model's own words about the person,
+     because those are the thing the whole app exists to produce.
+     ============================================================ */
+
+  let suppliedUrls = [];       // every URL the system put in the prompt
+  let suppliedQuotes = [];     // every corpus passage it was given
+  let suppliedTexture = [];    // the qualities it was actually told
+  let paintingShown = false;   // whether an image is on screen it cannot see
+
+  function noteSupplied(url, quote) {
+    if (url) suppliedUrls.push(String(url));
+    if (quote) suppliedQuotes.push(String(quote));
+  }
+  function clearSupplied() {
+    suppliedUrls = []; suppliedQuotes = []; suppliedTexture = []; paintingShown = false;
+  }
+
+  // Always supplied, in every prompt. Stripping a crisis link would be
+  // the worst possible false positive, so they are registered up front.
+  const ALWAYS_SUPPLIED = [
+    "https://988lifeline.org/chat", "https://findahelpline.com",
+    "988lifeline.org", "findahelpline.com",
+  ];
+
+  /* ctx is optional and exists so this can be tested without reaching into
+     a closure. Live calls pass nothing and use what was actually supplied. */
+  function auditReply(text, ctx) {
+    if (typeof text !== "string" || !text) return text;
+    if (ctx) {
+      if (ctx.urls) suppliedUrls = ctx.urls.slice();
+      if (ctx.texture) suppliedTexture = ctx.texture.slice();
+      if (typeof ctx.painting === "boolean") paintingShown = ctx.painting;
+    }
+    suppliedUrls = suppliedUrls.concat(ALWAYS_SUPPLIED);
+    let out = text, stripped = 0;
+
+    /* 1. LINKS. A URL is either one we handed over or one it made up.
+       There is no third case, and a made-up link is the most damaging
+       thing here because it looks exactly like a real one. */
+    out = out.replace(/!?\[[^\]]*\]\((https?:\/\/[^)\s]+)\)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s)\]]+)/g,
+      function (whole, mdUrl, angUrl, bare) {
+        const url = mdUrl || angUrl || bare;
+        const ok = suppliedUrls.some(function (u) {
+          // Same file is enough; query strings and thumb sizes differ.
+          return u === url || u.split("?")[0] === url.split("?")[0]
+            || url.indexOf(u.split("?")[0]) === 0;
+        });
+        if (ok) return whole;
+        stripped++;
+        return "";
+      });
+
+    /* 2. QUOTATION MARKS AROUND AN ARTIST ATTRIBUTION. If it puts words in
+       a named artist's mouth that were not in the corpus passage it was
+       given, that is the same failure as inventing a link \u2014 a confident
+       claim with nothing behind it. Flagged rather than removed, because
+       cutting mid-sentence would mangle the reply. */
+    const attrib = /\u201c([^\u201d]{20,})\u201d\s*[\u2014-]+\s*([A-Z][a-z]+(?: [A-Z][a-z]+)*)/g;
+    let m;
+    while ((m = attrib.exec(text)) !== null) {
+      const quoted = m[1];
+      const known = suppliedQuotes.some(function (q) {
+        return q.indexOf(quoted.slice(0, 40)) !== -1;
+      });
+      if (!known) stripped++;   // counted, and visible in __bbAudit
+    }
+
+    /* 3. DESCRIBING A PAINTING IT WAS NEVER SHOWN. The model is given a
+       title and a measured texture, not the image. When it writes "deep,
+       shadowy blues and greens" about a canvas that is mostly yellow, it
+       is inventing evidence to justify the match \u2014 and the person is
+       looking straight at the picture, so the invention is obvious and
+       corrosive. Sentences that describe the painting's appearance are
+       removed; the rest of the reply stands. */
+    if (paintingShown) {
+      const visual = /(?:^|(?<=[.!?]\s))[^.!?]*\b(?:deep|shadow[y]?|bright|dark|pale|vivid|muted|golden|blue[s]?|green[s]?|yellow|violet|crimson|hues?|tones?|palette|brushwork|colou?rs?)\b[^.!?]*[.!?]/gi;
+      out = out.replace(visual, function (sentence) {
+        // Keep it if it is only naming the shared texture, which was given.
+        const bare = sentence.toLowerCase();
+        const allowed = suppliedTexture.some(function (t) {
+          return bare.indexOf(t) !== -1 && bare.length < 90;
+        });
+        if (allowed) return sentence;
+        stripped++;
+        return "";
+      });
+    }
+
+    if (stripped) {
+      out = out.replace(/\s{2,}/g, " ").replace(/\(\s*\)/g, "").trim();
+      try {
+        window.__bbAudit = window.__bbAudit || [];
+        window.__bbAudit.push({ at: Date.now(), stripped: stripped,
+          supplied: suppliedUrls.length });
+      } catch (e) {}
+    }
+    clearSupplied();
+    return out;
+  }
+  try { window.__bbAuditReply = (t, c) => auditReply(t, c); } catch (e) {}
+  try { window.__bbNoteSupplied = (u, q) => noteSupplied(u, q); } catch (e) {}
+
+  /* WHAT TO SEARCH.
+
+     If they named someone \u2014 "show me a Monet", "something by Turner" \u2014 that
+     is what to look through. Otherwise fall back to a wide default rather
+     than one painter, because restricting the search to Van Gogh was a
+     choice with nothing behind it.
+
+     The name is taken from what they actually typed. Nothing is inferred
+     about who they might have meant. */
+  function gallerySearchFor(queryText) {
+    const t = String(queryText || "");
+    const m = t.match(/\b(?:by|a|an|some)\s+([A-Z][a-z\u00e0-\u00ff]+(?:\s+(?:van|de|di|von|del)\s+)?(?:\s?[A-Z][a-z\u00e0-\u00ff]+){0,2})/);
+    if (m && m[1] && m[1].length > 3) return m[1].trim();
+    // Wide by default: the whole public domain, not one hand.
+    return "oil painting landscape portrait 19th century";
+  }
+  try { window.__bbGallerySearch = (t) => gallerySearchFor(t); } catch (e) {}
 
   function galleryAside() {
     if (galleryBusy && !galleryPick) {
@@ -4067,13 +4258,16 @@ Rules:
     const g = galleryPick.painting;
     const shared = (galleryPick.shared || []).slice(0, 3).join(", ");
     galleryPick = null;            // offered once, not on every message after
-    return "\n\nA PAINTING THE TEXTURE CHOSE\n"
-      + "This was not picked from what you know. A set of public-domain canvases "
-      + "was measured, and this one shares the texture (" + shared + "): "
-      + g.title + " by " + g.painter + " \u2014 " + g.url + "\n"
-      + "You may offer it with the link. Say what it shares if it helps, but never "
-      + "say what the painting means or what the painter felt. If it does not fit "
-      + "what they said, ignore it.";
+    return "\n\nA PAINTING HAS ALREADY BEEN SHOWN\n"
+      + g.title + " by " + g.painter + " is on screen already \u2014 it was chosen by "
+      + "measuring canvases and finding one that shares this texture: " + shared + ". "
+      + "Do NOT name a different painting and do NOT give a link; the image is there. "
+      + "You have NOT seen this painting \u2014 you were told its title and a measured "
+      + "texture, nothing more. So do not describe its colours, its light, or what is "
+      + "in it. Saying \u2018deep shadowy blues\u2019 about a canvas you cannot see is inventing "
+      + "evidence to justify the match, and the person is looking straight at it. Name "
+      + "the texture it shares and stop. Never say what it means or what the painter "
+      + "felt.";
   }
   function artistAside(queryText) {
     if (typeof BBLens === "undefined" || !queryText) return "";
@@ -4083,6 +4277,8 @@ Rules:
     } catch (e) { return ""; }
     if (!hit) return "";
     const e = hit.entry;
+    noteSupplied(null, e.text);
+    noteSupplied(null, e.original);
     let out = "\n\nAN OLDER ACCOUNT OF THE SAME TEXTURE\n"
       + "Someone wrote about this same texture long ago. Their own words, not a "
       + "reading of them: \u201c" + e.text + "\u201d \u2014 " + e.artist + ", " + e.source
@@ -4115,6 +4311,7 @@ Rules:
        When it has nothing, the model may still answer \u2014 but it is told to
        say the difference, so an ungrounded suggestion is visibly one. */
     if (e.painting && e.painting.url) {
+      noteSupplied(e.painting.url, null);
       out += " There is also a painting this passage is about: "
         + e.painting.title + " (" + e.painting.year + "), public domain, at "
         + e.painting.url + ". You may name it and give the link.";
@@ -5810,6 +6007,7 @@ Rules:
 
       if (bubble) bubble.remove();   // re-rendered properly below, with Listen
       loadingRow.remove();
+      text = auditReply(text);
       {
         render("assistant", text);
         messages.push({ role: "assistant", content: text });

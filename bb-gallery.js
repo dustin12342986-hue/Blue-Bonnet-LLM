@@ -90,17 +90,31 @@
    * catalogue(key, limit) -> [{ title, url, page }]
    * Asks Commons what is actually in the category. Never constructs a URL.
    */
+  /* ANY SEARCH, NOT A LIST I CHOSE.
+
+     This was three hardcoded painters, which was a restriction with no
+     reason behind it. Commons holds millions of public-domain images and
+     its search takes free text, so the gallery can reach any of it: a
+     painter, a period, a subject, a movement. The named painters below are
+     only shortcuts.
+
+     What it still cannot do is reach copyrighted work. Measuring requires
+     loading the actual image, and a canvas from 1970 is not ours to load.
+     The public domain is the ceiling, and it is a high one. */
   async function catalogue(key, limit) {
     if (cache[key]) return cache[key];
+
+    // A known key becomes its search term; anything else IS the search.
     const p = PAINTERS.filter(function (x) { return x.key === key; })[0];
-    if (!p) throw new Error("unknown painter: " + key);
+    const term = p ? p.search : String(key || "").trim();
+    if (!term) throw new Error("nothing to search for");
 
     const url = API
       + "?action=query&format=json&origin=*"
       + "&generator=search"
-      + "&gsrsearch=" + encodeURIComponent(p.search)
-      + "&gsrnamespace=6"                       // File: namespace only
-      + "&gsrlimit=" + (limit || 30)
+      + "&gsrsearch=" + encodeURIComponent(term + " painting")
+      + "&gsrnamespace=6"
+      + "&gsrlimit=" + (limit || 40)
       + "&prop=imageinfo&iiprop=url&iiurlwidth=480";
 
     const res = await fetch(url);
@@ -111,28 +125,31 @@
     const list = Object.keys(pages).map(function (id) {
       const pg = pages[id];
       const info = (pg.imageinfo && pg.imageinfo[0]) || {};
+      const name = String(pg.title || "").replace(/^File:/, "").replace(/\.[a-z]+$/i, "")
+        .replace(/_/g, " ");
       return {
-        title: String(pg.title || "").replace(/^File:/, "").replace(/\.[a-z]+$/i, "")
-          .replace(/_/g, " "),
+        title: name,
         url: info.thumburl || null,
         page: info.descriptionurl || null,
-        painter: p.name,
+        painter: p ? p.name : guessPainter(name) || term,
       };
     }).filter(function (x) { return x.url && /\.(jpg|jpeg|png)/i.test(x.url); });
 
-    // An empty list is a failure, not an answer. Saying so beats caching
-    // nothing and reporting "no painting crossed" forever after.
-    if (!list.length) throw new Error("Commons returned no images for " + key);
-
+    // An empty list is a failure, not an answer. Caching nothing and then
+    // reporting "no painting crossed" forever is how this broke the first
+    // time.
+    if (!list.length) throw new Error("Commons returned no images for " + term);
     cache[key] = list;
     return list;
   }
 
-  /**
-   * measureAll(key, n) — measures up to n canvases and caches the results.
-   * Failures are skipped rather than thrown: one unreachable image should
-   * not empty the gallery.
-   */
+  /* Wikimedia filenames usually lead with the painter. Reading it off the
+     name beats asserting one, and an unknown is better than a wrong one. */
+  function guessPainter(name) {
+    const m = String(name).match(/^([A-Z][a-z\u00e0-\u00ff]+(?:\s+(?:van|de|di|von|del|la)\s+)?(?:\s?[A-Z][a-z\u00e0-\u00ff]+){0,2})\s*[-\u2013]/);
+    return m ? m[1].trim() : null;
+  }
+
   async function measureAll(key, n) {
     if (typeof global.BBVision === "undefined") throw new Error("BBVision not loaded");
     const list = await catalogue(key);
@@ -234,6 +251,7 @@
 
   global.BBGallery = {
     painters: painters,
+    guessPainter: guessPainter,
     catalogue: catalogue,
     measureAll: measureAll,
     pickFor: pickFor,
