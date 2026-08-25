@@ -242,8 +242,12 @@
     let best = null;
 
     passages.forEach(function (p) {
+      /* A cached entry built before `text` existed has no signature source,
+         and the cache lives for the whole page. So a fix could land and the
+         old broken objects would keep being scored \u2014 which is exactly what
+         happened. Rebuild anything missing the field the signature reads. */
       let e = encoded[p.text];
-      if (!e) {
+      if (!e || !e.text) {
         const s = encode(p.text);
         /* No tags is not no signature.
 
