@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-scanning";
+  const BUILD = "2026-08-25-carrier";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2300,7 +2300,13 @@ BOUNDARIES
   }
 
   function recordCrossing(mine, theirs, carrier, opts) {
-    if (!theirs || !carrier || !carrier.length) return null;
+    /* An empty carrier used to mean no crossing. It now means the purest
+       kind: the axes carried and no word came along with them. Every scan
+       crossing was being silently dropped by this guard \u2014 counted, never
+       stored. What must exist is the other end, not a shared word. */
+    if (!theirs) return null;
+    carrier = (carrier && carrier.length) ? carrier
+      : ((opts && opts.axes) || []);
     opts = opts || {};
     const ep = {
       id: "cr" + Date.now().toString(36),
@@ -5917,6 +5923,7 @@ Rules:
           try {
             recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
               best.shared || [], { autonomous: true, measured: true,
+                                   axes: best.axes || [],
                                    sameSubject: best.sameSubject, verb: "was taking in" });
           } catch (e) {}
           try { onScanCrossing(best, sig); } catch (e) {}
@@ -5997,7 +6004,8 @@ Rules:
       result.appendChild(c);
       try {
         recordCrossing({ modes: { sound: q } }, e, best.shared || [],
-          { measured: true, verb: "heard", sameSubject: best.sameSubject });
+          { measured: true, verb: "heard", axes: best.axes || [],
+            sameSubject: best.sameSubject });
       } catch (err) {}
     } catch (err) {}
   }
@@ -6492,7 +6500,8 @@ Rules:
       try {
         if (artist) {
           recordCrossing({ modes: sig.modes, aff: a.aff }, artist.entry, artist.shared,
-            { verb: "dreamt", autonomous: true, sameSubject: artist.sameSubject });
+            { verb: "dreamt", autonomous: true, axes: artist.axes || [],
+              sameSubject: artist.sameSubject });
         } else if (pair.senses && pair.senses.length) {
           // Two of their OWN moments crossing is the purer case: nothing
           // came from outside at all.

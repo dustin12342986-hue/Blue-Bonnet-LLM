@@ -1228,6 +1228,11 @@
         best = { entry: e, total: total, shared: t.shared, texture: t.score,
                  sameSubject: !!t.sameSubject, overlap: t.overlap || [],
                  overlapShare: t.overlapShare || 0,
+                 // The axes that actually carried. `shared` is words, and
+                 // with the signature carrying it is usually empty \u2014 which
+                 // is the ideal case, not an absent one.
+                 axes: signatureOverlap(signature(sig.modes, sig.text),
+                                        signature(e.modes, e.text)),
                  align: t.align, domains: t.domains };
       }
     });
