@@ -207,16 +207,47 @@
 
      So it tries forms in a shuffled order until one yields, and stops
      guessing that any particular name is right. */
+  /* THOUSANDS AT ONCE, NOT TWENTY.
+
+     Wikimedia caps a single request at twenty pages. That is a limit on
+     one call, not on how many calls can be in flight \u2014 and I had been
+     treating it as the ceiling on the whole pass. Twenty pages is not a
+     sample of anything.
+
+     So a pass fires many requests in parallel across many forms. Twenty
+     five at a time is five hundred pages, which is several thousand
+     passages, and the pool keeps all of it.
+
+     Paced deliberately: a 429 backs off rather than retrying into a wall,
+     and the concurrency is well inside what anonymous access tolerates.
+     Hammering the archive would be both rude and self-defeating. */
+
+  const CONCURRENCY = 25;
+  let backoffUntil = 0;
+
   async function wide(n) {
     const want = n || 20;
+    if (Date.now() < backoffUntil) return pool;
+
     const forms = PERCEPTUAL.slice().sort(function () { return Math.random() - 0.5; });
-    // Pull from several forms per pass, not one, and keep everything.
-    for (let i = 0; i < Math.min(forms.length, 3); i++) {
-      try {
-        const got = await pull(forms[i], want);
-        if (got.length) addToPool(got);
-      } catch (e) { /* try the next form */ }
+    const jobs = [];
+    for (let i = 0; i < CONCURRENCY; i++) {
+      jobs.push(pull(forms[i % forms.length], want));
     }
+
+    const settled = await Promise.allSettled(jobs);
+    let rateLimited = false;
+    settled.forEach(function (r) {
+      if (r.status === "fulfilled" && r.value && r.value.length) {
+        addToPool(r.value);
+      } else if (r.status === "rejected"
+                 && /429|rate/i.test(String(r.reason && r.reason.message))) {
+        rateLimited = true;
+      }
+    });
+    // Back off for a minute rather than retrying into a wall.
+    if (rateLimited) backoffUntil = Date.now() + 60000;
+
     return pool;
   }
 
@@ -378,6 +409,7 @@
     find: find,
     wide: wide,
     poolSize: poolSize,
+    CONCURRENCY: CONCURRENCY,
     POOL_MAX: POOL_MAX,
     pull: pull,
     PERCEPTUAL: PERCEPTUAL,

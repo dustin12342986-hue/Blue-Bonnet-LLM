@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-pool";
+  const BUILD = "2026-08-25-parallel";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5938,7 +5938,24 @@ Rules:
       await sleep(scanPause());
     }
   }
-  function scanPause() { return 2500 + Math.floor(Math.random() * 2000); }
+  /* The pause scales with the pool.
+
+     A pass now pulls five hundred pages. At one pass every three seconds
+     that is ten thousand pages a minute at Wikimedia, which is rude and
+     would get the archive to cut us off.
+
+     So it pulls hard while the far end is small and eases off once it is
+     large: the pool is what matters, and once there are tens of thousands
+     of passages resident there is plenty to scan against without asking
+     for more so often. */
+  function scanPause() {
+    let size = 0;
+    try { size = (BBTexts && BBTexts.poolSize) ? BBTexts.poolSize() : 0; } catch (e) {}
+    const base = size < 2000 ? 4000        // building the pool
+      : size < 10000 ? 15000               // comfortable
+      : 45000;                             // plenty to work with
+    return base + Math.floor(Math.random() * 3000);
+  }
   function stopScanning() { scanning = false; }
   try {
     window.__bbScan = () => ({
