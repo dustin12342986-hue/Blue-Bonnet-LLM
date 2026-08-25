@@ -129,10 +129,7 @@
     "incategory:Essays", "incategory:Letters", "incategory:Diaries",
   ];
 
-  async function wide(n) {
-    const want = n || 10;
-    // Rotate the form so the pull is not always the same shelf either.
-    const form = PERCEPTUAL[Math.floor(Math.random() * PERCEPTUAL.length)];
+  async function pull(form, want) {
     const url = API
       + "?action=query&format=json&origin=*"
       + "&generator=search&gsrsearch=" + encodeURIComponent(form)
@@ -153,6 +150,27 @@
         "https://en.wikisource.org/?curid=" + id));
     });
     return all;
+  }
+
+  /* A form that returns nothing must not end the pull.
+
+     wide() picked one form at random, and several of the category names
+     were guessed rather than checked. When it drew a dud it returned zero
+     passages and the whole thing reported "nothing crossed" \u2014 which looks
+     exactly like a genuine refusal and is not one.
+
+     So it tries forms in a shuffled order until one yields, and stops
+     guessing that any particular name is right. */
+  async function wide(n) {
+    const want = n || 10;
+    const forms = PERCEPTUAL.slice().sort(function () { return Math.random() - 0.5; });
+    for (let i = 0; i < forms.length; i++) {
+      try {
+        const got = await pull(forms[i], want);
+        if (got.length) return got;
+      } catch (e) { /* try the next form */ }
+    }
+    return [];
   }
 
   /**
@@ -278,6 +296,7 @@
   global.BBTexts = {
     find: find,
     wide: wide,
+    pull: pull,
     PERCEPTUAL: PERCEPTUAL,
     pickFor: pickFor,
     stats: stats,
