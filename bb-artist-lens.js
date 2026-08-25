@@ -1223,6 +1223,71 @@
     return { work: work, painting: painting, because: e, shared: hit.shared };
   }
 
+  /* ==========================================================
+     ONE LENS, EVERY SOURCE.
+
+     lens() only ever searched the 29 curated passages. The live text, the
+     paintings, the audio \u2014 all of it sat in separate modules called from
+     separate places, so the instrument built to test the algorithm across
+     anything it sees or touches was pointed at one shelf.
+
+     anyLens() is the same algorithm with the far end unbounded. Same
+     carrier, same subtraction, same floor. Every source competes on
+     identical terms and the best crossing wins, wherever it came from.
+
+     Verified material is preferred only when it ties \u2014 never given a
+     head start, because that would be the shelf choosing again.
+     ========================================================== */
+
+  async function anyLens(sig, aff, opts) {
+    opts = opts || {};
+    const found = [];
+
+    // 1. what has been checked by hand
+    try {
+      const c = lens(sig, aff, opts);
+      if (c) found.push(Object.assign({}, c, { from: "corpus", verified: true }));
+    } catch (e) {}
+
+    // 2. anything written, anywhere in the public domain
+    if (!opts.skipTexts && typeof global.BBTexts !== "undefined") {
+      try {
+        const t = await global.BBTexts.pickFor(sig, opts.query || null,
+          { pages: opts.pages || 20 });
+        if (t) found.push(Object.assign({}, t, { from: "text", verified: false }));
+      } catch (e) {}
+    }
+
+    // 3. anything painted
+    if (!opts.skipArt && typeof global.BBGallery !== "undefined") {
+      try {
+        const g = await global.BBGallery.pickFor(sig, aff,
+          opts.painter || "oil painting landscape portrait", { n: opts.canvases || 8 });
+        if (g && g.painting) {
+          const q = g.painting.qualities || [];
+          const e = { id: "art-" + String(g.painting.title).slice(0, 20),
+                      artist: g.painting.painter, source: g.painting.title,
+                      cite: g.painting.page || g.painting.url,
+                      text: g.painting.title, modes: { sight: q },
+                      aff: null, verified: false, painting: g.painting };
+          const t = textureScore(sig, e);
+          if (t.score > 0) {
+            found.push({ entry: e, total: t.score, shared: t.shared,
+                         sameSubject: !!t.sameSubject, align: t.align,
+                         domains: t.domains, from: "art", verified: false });
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!found.length) return null;
+    found.sort(function (a, b) {
+      if (Math.abs(b.total - a.total) > 0.0001) return b.total - a.total;
+      return (b.verified ? 1 : 0) - (a.verified ? 1 : 0);   // ties only
+    });
+    return found[0];
+  }
+
   function stats() {
     return {
       usable: !tooSmall(),
@@ -1240,6 +1305,7 @@
 
   global.BBLens = {
     lens: lens,
+    anyLens: anyLens,
     phrase: phrase,
     stats: stats,
     corpus: CORPUS,

@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-anysense";
+  const BUILD = "2026-08-25-onelens";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5739,6 +5739,7 @@ Rules:
   let listenStored = false;  // one episode per piece, not per pause
   let liveTried = false;     // the wide pull happens once, not every 20 frames
   let crossingStored = false;// one memory per crossing, not per render
+  let anyTried = false;      // the unbounded search runs once per listen
   let listening_ = false;    // true while a stream is still running
   let listenStop = null;
 
@@ -5750,6 +5751,43 @@ Rules:
     // is about 16ms and says almost nothing on its own.
     const need = listenSeen.length * 0.3;
     return Object.keys(count).filter((q) => count[q] >= need);
+  }
+
+  /* One card for a crossing, whatever it crossed from. The source is shown
+     and the verified ones are marked, but nothing is drawn differently for
+     being from the shelf \u2014 they competed on the same terms. */
+  function renderCrossingCard(result, best, q) {
+    try {
+      const e = best.entry;
+      const c = document.createElement("div");
+      c.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+        + "border:1px " + (best.verified ? "solid" : "dashed") + " var(--border);"
+        + "background:var(--panel2)";
+      if (e.painting && e.painting.url) {
+        const img = document.createElement("img");
+        img.src = e.painting.url; img.alt = e.source; img.loading = "lazy";
+        img.style.cssText = "width:100%;border-radius:8px;display:block;margin-bottom:8px";
+        c.appendChild(img);
+      }
+      const t = document.createElement("div");
+      t.textContent = e.painting ? e.source : "\u201c" + e.text + "\u201d";
+      c.appendChild(t);
+      const src = document.createElement("div");
+      src.className = "sub"; src.style.cssText = "margin-top:6px;font-size:12px";
+      src.textContent = (e.artist || e.source || "") + (e.cite ? "  \u00b7  " + e.cite : "");
+      c.appendChild(src);
+      const how = document.createElement("div");
+      how.className = "sub"; how.style.cssText = "margin-top:4px;font-size:11px";
+      how.textContent = "crossed " + (best.domains || []).join(" \u2192 ")
+        + "  \u00b7  from " + best.from
+        + (best.verified ? "" : ", not verified");
+      c.appendChild(how);
+      result.appendChild(c);
+      try {
+        recordCrossing({ modes: { sound: q } }, e, best.shared || [],
+          { measured: true, verb: "heard", sameSubject: best.sameSubject });
+      } catch (err) {}
+    } catch (err) {}
   }
 
   function renderListen() {
@@ -5812,6 +5850,11 @@ Rules:
       lastClaim = null;          // checked once
     }
 
+    /* ONE LENS, EVERY SOURCE.
+       This searched the 29 curated passages and only fell through to live
+       text when nothing crossed \u2014 which made the shelf the default and
+       everything else a consolation. anyLens puts every source on the same
+       footing and lets the best crossing win, wherever it is from. */
     let hit = null;
     try {
       hit = (typeof BBLens !== "undefined")
@@ -5819,6 +5862,17 @@ Rules:
                       { allowSmallCorpus: true })
         : null;
     } catch (e) { hit = null; }
+
+    if (typeof BBLens !== "undefined" && BBLens.anyLens && !listening_ && !anyTried) {
+      anyTried = true;
+      BBLens.anyLens({ modes: { sound: q } }, { valence: 0.3, arousal: 0.5 },
+        { allowSmallCorpus: true, pages: 20, canvases: 8 })
+        .then(function (best) {
+          if (!best || (hit && best.entry.id === hit.entry.id)) return;
+          renderCrossingCard(result, best, q);
+        })
+        .catch(function () {});
+    }
 
     // The chain completes here: a crossing happened, so a memory is made.
     if (hit && !listening_ && !crossingStored) {
@@ -5961,6 +6015,7 @@ Rules:
       listenSeen = [];
       liveTried = false;
       crossingStored = false;
+      anyTried = false;
       listening_ = true;
       listenStored = false;
       renderListen();
@@ -5992,6 +6047,7 @@ Rules:
       listenStored = false;
       liveTried = false;
       crossingStored = false;
+      anyTried = false;
       BBAudio.listenToTab((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
         if (listenSeen.length % 20 === 0) renderListen();
