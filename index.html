@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-trace";
+  const BUILD = "2026-08-25-hunt";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5857,6 +5857,48 @@ Rules:
     };
   }
 
+  /* HUNTING WHILE IT LISTENS.
+
+     The search ran once, when the sound stopped. That is not what this is:
+     it should be reading the music and going through passages at the same
+     time, thousands of them, refusing almost all of them, until one
+     crosses or the song ends without one.
+
+     So it runs in a loop for as long as the mic is open. Each pass pulls a
+     fresh batch, weighs every passage against the texture measured SO FAR,
+     and shows what it is looking at. When something crosses it stops and
+     turns blue. Most listens end with nothing, and the counter is the
+     evidence that the refusal was real. */
+
+  let huntStop = false;
+  let huntRan = false;   // a continuous hunt makes the one-shot redundant
+
+  async function huntWhileListening(result, getQualities) {
+    huntStop = false;
+    huntRan = true;
+    const trace = startTrace(result);
+    let landed = null;
+
+    while (!huntStop && !landed) {
+      const q = getQualities();
+      if (!q || !q.length) { await sleep(400); continue; }
+      try {
+        const best = await BBLens.anyLens({ modes: { sound: q } },
+          { valence: 0.3, arousal: 0.5 },
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
+            onConsider: trace.saw });
+        if (best) landed = best;
+      } catch (e) { /* keep hunting */ }
+      if (!landed) await sleep(250);   // let the audio thread breathe
+    }
+
+    trace.done(!!landed);
+    if (landed) renderCrossingCard(result, landed, getQualities());
+    return landed;
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
   function renderCrossingCard(result, best, q) {
     try {
       const e = best.entry;
@@ -5974,7 +6016,10 @@ Rules:
         : null;
     } catch (e) { hit = null; }
 
-    if (typeof BBLens !== "undefined" && BBLens.anyLens && !listening_ && !anyTried) {
+    /* The hunt covers a mic or tab listen. This one-shot remains for a FILE
+       listen, where there is no continuous stream to hunt alongside. */
+    if (typeof BBLens !== "undefined" && BBLens.anyLens && !listening_
+        && !anyTried && !huntRan) {
       anyTried = true;
       const trace = startTrace(result);
       BBLens.anyLens({ modes: { sound: q } }, { valence: 0.3, arousal: 0.5 },
@@ -6135,6 +6180,7 @@ Rules:
       liveTried = false;
       crossingStored = false;
       anyTried = false;
+      huntRan = false;
       listening_ = true;
       listenStored = false;
       renderListen();
@@ -6160,6 +6206,7 @@ Rules:
     if (tabBtn) tabBtn.onclick = () => {
       if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
         listening_ = false;
+        huntStop = true;
         tabBtn.textContent = "Listen to another tab"; renderListen(); return; }
       const measure = document.getElementById("listenMeasure");
       if (measure) measure.textContent = "choose a tab and tick \u2018share tab audio\u2019\u2026";
@@ -6177,6 +6224,11 @@ Rules:
         listenStop = h.stop;
         listening_ = true;
         tabBtn.textContent = "Stop listening";
+        // Hunt while it listens, not after.
+        try {
+          const res = document.getElementById("listenResult");
+          if (res) { res.innerHTML = ""; huntWhileListening(res, listenQualities); }
+        } catch (e) {}
       }).catch((e) => {
         if (measure) measure.textContent = e.message;
       });
@@ -6189,6 +6241,7 @@ Rules:
     if (roomBtn) roomBtn.onclick = () => {
       if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
         listening_ = false;
+        huntStop = true;
         roomBtn.textContent = "Listen through the mic"; renderListen(); return; }
       const measure = document.getElementById("listenMeasure");
       if (measure) measure.textContent = "listening\u2026 play something out loud";
@@ -6206,6 +6259,11 @@ Rules:
         listenStop = h.stop;
         listening_ = true;
         roomBtn.textContent = "Stop listening";
+        // Hunt while it listens, not after.
+        try {
+          const res = document.getElementById("listenResult");
+          if (res) { res.innerHTML = ""; huntWhileListening(res, listenQualities); }
+        } catch (e) {}
       }).catch((e) => {
         if (measure) measure.textContent = e.message;
       });
