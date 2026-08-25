@@ -289,6 +289,10 @@
         recordings work, and so does anything public domain (musopen.org and imslp.org
         both have a lot). Nothing is uploaded; the analysis happens here.</p>
       <input id="listenFile" type="file" accept="audio/*" style="margin:10px 0" />
+      <div style="margin:6px 0 10px">
+        <button id="listenTabBtn" class="more-btn">Listen to another tab</button>
+        <span class="sub" style="font-size:11px;margin-left:8px">YouTube, streaming, anything playing</span>
+      </div>
       <audio id="listenAudio" controls style="width:100%;margin:6px 0"></audio>
       <p id="listenMeasure" class="sub" style="font-family:ui-monospace,Menlo,monospace;font-size:11px"></p>
       <div id="listenResult"></div>
@@ -1220,7 +1224,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-anyart";
+  const BUILD = "2026-08-24-tab";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -5601,6 +5605,28 @@ Rules:
     };
     // Match when it stops, not continuously \u2014 a piece has to be heard
     // through before what held becomes clear.
+    // Listening to whatever is playing elsewhere. Nothing is recorded and
+    // nothing is uploaded \u2014 the stream reaches an analyser and four numbers
+    // per frame come back out.
+    const tabBtn = document.getElementById("listenTabBtn");
+    if (tabBtn) tabBtn.onclick = () => {
+      if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
+        tabBtn.textContent = "Listen to another tab"; renderListen(); return; }
+      const measure = document.getElementById("listenMeasure");
+      if (measure) measure.textContent = "choose a tab and tick \u2018share tab audio\u2019\u2026";
+      listenSeen = [];
+      listenStored = false;
+      BBAudio.listenToTab((m) => {
+        if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        if (listenSeen.length % 20 === 0) renderListen();
+      }).then((h) => {
+        listenStop = h.stop;
+        tabBtn.textContent = "Stop listening";
+      }).catch((e) => {
+        if (measure) measure.textContent = e.message;
+      });
+    };
+
     audio.onpause = renderListen;
     audio.onended = renderListen;
   })();

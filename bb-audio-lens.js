@@ -342,12 +342,56 @@
     };
   }
 
+  /* LISTENING TO WHATEVER IS PLAYING.
+
+     A file input can only reach files. But the lens does not care where
+     sound comes from \u2014 it measures a spectrum. Chrome can hand over the
+     audio of another tab if the person grants it, so YouTube, a streaming
+     service, anything at all becomes measurable.
+
+     Two things this is NOT: it does not record, and nothing is uploaded.
+     The stream goes to an AnalyserNode and the only thing kept is four
+     numbers per frame. There is no path from here to a copy of the audio,
+     which also means no copyright question \u2014 measuring is not copying.
+
+     The person must pick the tab and tick "share tab audio" themselves.
+     Browsers require that gesture and it is the right requirement. */
+  function listenToTab(onFrame, opts) {
+    opts = opts || {};
+    if (!global.navigator || !global.navigator.mediaDevices
+        || !global.navigator.mediaDevices.getDisplayMedia) {
+      return Promise.reject(new Error("this browser cannot capture tab audio"));
+    }
+    return global.navigator.mediaDevices
+      .getDisplayMedia({ video: true, audio: true })
+      .then(function (stream) {
+        const tracks = stream.getAudioTracks();
+        if (!tracks.length) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          throw new Error("no audio was shared \u2014 tick \u2018share tab audio\u2019 when choosing the tab");
+        }
+        // Video is only requested because Chrome will not offer the audio
+        // checkbox without it. It is stopped immediately.
+        stream.getVideoTracks().forEach(function (t) { t.stop(); });
+
+        const audioOnly = new global.MediaStream(tracks);
+        const handle = listen(audioOnly, onFrame, opts);
+        return {
+          stop: function () {
+            try { handle.stop(); } catch (e) {}
+            tracks.forEach(function (t) { try { t.stop(); } catch (e) {} });
+          },
+        };
+      });
+  }
+
   global.BBAudio = {
     analyseUrl: analyseUrl,
     summarise: summarise,
     qualitiesOfSound: qualitiesOfSound,
     measure: measure,
     listen: listen,
+    listenToTab: listenToTab,
     THRESHOLDS: T,
     _centroid: centroid,
     _spread: spread,
