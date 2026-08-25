@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-scanerr";
+  const BUILD = "2026-08-25-journal";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5567,15 +5567,91 @@ Rules:
     memory.dreams = dreams().slice(0, DREAM_MAX);
   }
 
+  /* CROSSINGS BELONG IN THE JOURNAL.
+
+     The scanner records every crossing it finds, and none of it was
+     readable anywhere in the app \u2014 it went into memory and stayed there,
+     reachable only by digging through localStorage in a console. A system
+     that finds things and never shows you is a system where you never find
+     out.
+
+     They render above the dreams, newest first, with what carried, where
+     it came from, and whether it has been checked. */
+  function renderCrossings(list) {
+    const all = (memory.episodes || [])
+      .filter(function (e) { return e.kind === "crossing"; })
+      .slice(-40).reverse();
+    if (!all.length) return;
+
+    const head = document.createElement("div");
+    head.className = "sub";
+    head.style.cssText = "margin:4px 0 8px;font-size:12px;letter-spacing:.03em";
+    head.textContent = "CROSSINGS \u00b7 " + all.length;
+    list.appendChild(head);
+
+    all.forEach(function (e) {
+      const c = e.crossing || {};
+      const card = document.createElement("div");
+      card.className = "dream-card";
+      card.style.borderLeft = "3px solid #4a63d8";
+
+      const when = document.createElement("div");
+      when.className = "dream-line dim";
+      when.style.fontSize = "11px";
+      when.textContent = new Date(e.at).toLocaleString()
+        + "  \u00b7  " + (c.autonomous ? "found on its own" : "asked for")
+        + (c.theirs && c.theirs.verified === false ? "  \u00b7  live, not verified" : "");
+      card.appendChild(when);
+
+      if (c.theirs && c.theirs.text) {
+        const q = document.createElement("div");
+        q.className = "dream-line";
+        q.textContent = "\u201c" + String(c.theirs.text).slice(0, 260) + "\u201d";
+        card.appendChild(q);
+      }
+      if (c.theirs && c.theirs.source) {
+        const src = document.createElement("div");
+        src.className = "dream-line dim";
+        src.style.fontSize = "12px";
+        src.textContent = c.theirs.source;
+        card.appendChild(src);
+      }
+      const how = document.createElement("div");
+      how.className = "dream-line dim";
+      how.style.fontSize = "11px";
+      how.textContent = "carried on " + ((c.carrier || []).join(", ") || "\u2014")
+        + (c.emotion && typeof c.emotion.shift === "number"
+           ? "  \u00b7  moved " + c.emotion.shift : "");
+      card.appendChild(how);
+
+      // The same question the listen panel asks, so a crossing found in the
+      // background can still teach the floor.
+      if (e.kept === undefined) card.appendChild(rateCrossing(e, { verified: true }));
+      else {
+        const r = document.createElement("div");
+        r.className = "dream-line dim";
+        r.style.fontSize = "11px";
+        r.textContent = e.kept ? "kept" : "dismissed";
+        card.appendChild(r);
+      }
+      list.appendChild(card);
+    });
+
+    const rule = document.createElement("div");
+    rule.style.cssText = "height:1px;background:var(--border);margin:14px 0 10px";
+    list.appendChild(rule);
+  }
+
   function renderDreams() {
     const list = document.getElementById("dreamList");
     if (!list) return;
     list.innerHTML = "";
+    renderCrossings(list);
     const all = dreams();
     if (!all.length) {
       const p = document.createElement("p");
       p.className = "sub";
-      p.textContent = "Nothing yet. Blue Bonnet reflects in the background once there's enough conversation to reflect on.";
+      p.textContent = "No dreams yet. Blue Bonnet reflects in the background once there's enough conversation to reflect on.";
       list.appendChild(p);
       return;
     }
