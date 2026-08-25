@@ -124,10 +124,56 @@
      subject. That is the same move the gallery makes by searching for
      paintings rather than searching someone's words: narrow the medium,
      never the meaning. */
+  /* Forms where sensation is the subject. More of them than before, because
+     the pull was drawing from six categories and calling it the internet. */
   const PERCEPTUAL = [
-    "incategory:Poems", "incategory:Nature", "incategory:Travel_literature",
-    "incategory:Essays", "incategory:Letters", "incategory:Diaries",
+    "incategory:Poems", "incategory:Poetry", "incategory:Nature",
+    "incategory:Travel_literature", "incategory:Essays", "incategory:Letters",
+    "incategory:Diaries", "incategory:Novels", "incategory:Short_stories",
+    "incategory:Autobiographies", "incategory:Sea_stories",
+    "incategory:Ghost_stories", "incategory:Fairy_tales",
+    "incategory:Plays", "incategory:Speeches", "incategory:Sketches",
   ];
+
+  /* ============================================================
+     THE POOL GROWS. IT DOES NOT RESET.
+
+     Every pass pulled twenty pages, weighed them, threw them away and
+     pulled twenty more. After an hour of scanning it had seen thousands of
+     pages and remembered none of them \u2014 so the far end was always twenty
+     pages against a corpus of twenty-nine passages chosen for sensory
+     density. The corpus won because it was the only real competitor.
+
+     Wikimedia caps a request at twenty pages, so the size has to come from
+     TIME rather than from one enormous call. Everything pulled stays
+     resident. Ten minutes of scanning is a few thousand passages; an hour
+     is tens of thousands.
+
+     Capped so a long session cannot eat the tab.
+     ============================================================ */
+
+  const POOL_MAX = 40000;
+  let pool = [];
+  let poolSeen = Object.create(null);   // dedupe by text
+
+  function addToPool(passages) {
+    let added = 0;
+    for (let i = 0; i < passages.length; i++) {
+      const t = passages[i].text;
+      if (poolSeen[t]) continue;
+      poolSeen[t] = 1;
+      pool.push(passages[i]);
+      added++;
+    }
+    if (pool.length > POOL_MAX) {
+      // Drop the oldest. Anything still worth crossing will come round again.
+      const cut = pool.splice(0, pool.length - POOL_MAX);
+      cut.forEach(function (p) { delete poolSeen[p.text]; });
+    }
+    return added;
+  }
+
+  function poolSize() { return pool.length; }
 
   async function pull(form, want) {
     const url = API
@@ -162,15 +208,16 @@
      So it tries forms in a shuffled order until one yields, and stops
      guessing that any particular name is right. */
   async function wide(n) {
-    const want = n || 10;
+    const want = n || 20;
     const forms = PERCEPTUAL.slice().sort(function () { return Math.random() - 0.5; });
-    for (let i = 0; i < forms.length; i++) {
+    // Pull from several forms per pass, not one, and keep everything.
+    for (let i = 0; i < Math.min(forms.length, 3); i++) {
       try {
         const got = await pull(forms[i], want);
-        if (got.length) return got;
+        if (got.length) addToPool(got);
       } catch (e) { /* try the next form */ }
     }
-    return [];
+    return pool;
   }
 
   /**
@@ -330,6 +377,8 @@
   global.BBTexts = {
     find: find,
     wide: wide,
+    poolSize: poolSize,
+    POOL_MAX: POOL_MAX,
     pull: pull,
     PERCEPTUAL: PERCEPTUAL,
     pickFor: pickFor,

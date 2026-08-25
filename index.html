@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-learns";
+  const BUILD = "2026-08-25-pool";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5941,9 +5941,15 @@ Rules:
   function scanPause() { return 2500 + Math.floor(Math.random() * 2000); }
   function stopScanning() { scanning = false; }
   try {
-    window.__bbScan = () => ({ running: scanning, weighed: scanCount,
-                               crossed: scanCrossed,
-                               feeding: !!lastSignature });
+    window.__bbScan = () => ({
+      running: scanning, weighed: scanCount, crossed: scanCrossed,
+      feeding: !!lastSignature,
+      // How big the far end has grown. It accumulates for as long as the
+      // app is open, so this is the honest measure of what it is scanning
+      // against \u2014 not the twenty pages of one request.
+      pool: (typeof BBTexts !== "undefined" && BBTexts.poolSize)
+        ? BBTexts.poolSize() : 0,
+    });
     window.__bbStopScan = stopScanning;
   } catch (e) {}
 
