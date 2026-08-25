@@ -385,6 +385,90 @@
       });
   }
 
+  /* RELATIVE TO THE TRACK, NOT TO A NUMBER I CHOSE.
+
+     qualitiesOfSound labels each frame against fixed thresholds, and real
+     music sits in the middle of them. A whole song came back as three axes
+     \u2014 bright, soft, released \u2014 because thick/thin and high/low never
+     tripped. Three axes out of ten is a thin carrier, and it was thin
+     because of the numbers, not because of the music.
+
+     Fourth time an absolute threshold has failed on this project. Same fix
+     as the rarity floor and the canvas measurements: a passage is bright
+     if it is bright FOR THIS TRACK. Every axis then has a chance to speak,
+     and what it says is about the material rather than about me.
+
+     Pass the raw frames and get back what actually held across them. */
+  function qualitiesOfTrack(frames) {
+    if (!frames || frames.length < 8) return [];
+    const col = function (f) {
+      return frames.map(f).filter(function (v) { return typeof v === "number" && !isNaN(v); })
+        .sort(function (a, b) { return a - b; });
+    };
+    const at = function (arr, p) {
+      return arr.length ? arr[Math.floor((arr.length - 1) * p)] : 0;
+    };
+    const cent = col(function (m) { return m.centroidNorm; });
+    const spr  = col(function (m) { return m.spreadNorm; });
+    const flx  = col(function (m) { return m.flux; });
+    if (!cent.length) return [];
+
+    // A third at each end. The middle of a track is not a quality.
+    const b = { cLo: at(cent, 0.33), cHi: at(cent, 0.67),
+                sLo: at(spr, 0.33),  sHi: at(spr, 0.67),
+                fLo: at(flx, 0.33),  fHi: at(flx, 0.67) };
+
+    /* An axis with no spread has nothing to say. Relative labelling means
+       even a flat track has a marginally brighter third, and a steady quiet
+       piece came back bright, high and rough on noise alone. If the range
+       between the thirds is negligible, the axis stays silent. */
+    const flat = function (lo, hi, scale) { return (hi - lo) < scale; };
+    const mute = { c: flat(b.cLo, b.cHi, 0.02),
+                   s: flat(b.sLo, b.sHi, 0.02),
+                   f: flat(b.fLo, b.fHi, 0.5) };
+
+    const count = Object.create(null);
+    frames.forEach(function (m) {
+      const push = function (q) { count[q] = (count[q] || 0) + 1; };
+      if (!mute.c) {
+        if (m.centroidNorm >= b.cHi) { push("bright"); push("high"); }
+        else if (m.centroidNorm <= b.cLo) { push("dark"); push("low"); }
+      }
+      if (!mute.s) {
+        if (m.spreadNorm >= b.sHi) push("thick");
+        else if (m.spreadNorm <= b.sLo) push("thin");
+      }
+      if (!mute.f) {
+        if (m.flux >= b.fHi) { push("rough"); push("tense"); }
+        else if (m.flux <= b.fLo) { push("soft"); push("released"); }
+      }
+    });
+
+    /* Held across a third of the track, and only one side of each pair. A
+       track cannot be both bright and dark \u2014 measuring relative to itself
+       means both ends trip, so the side that held longer wins and the
+       other is dropped. A tie means neither: the track has nothing to say
+       on that axis. */
+    const need = frames.length * 0.33;
+    const held = Object.keys(count).filter(function (q) { return count[q] >= need; });
+    const pairs = [["bright","dark"], ["thick","thin"], ["rough","soft"],
+                   ["tense","released"], ["high","low"]];
+    const out = held.slice();
+    pairs.forEach(function (pr) {
+      const a = out.indexOf(pr[0]), b = out.indexOf(pr[1]);
+      if (a === -1 || b === -1) return;
+      const ca = count[pr[0]], cb = count[pr[1]];
+      const loser = ca === cb ? null : (ca > cb ? pr[1] : pr[0]);
+      if (loser === null) {                       // a tie says nothing
+        out.splice(out.indexOf(pr[1]), 1);
+        out.splice(out.indexOf(pr[0]), 1);
+      } else {
+        out.splice(out.indexOf(loser), 1);
+      }
+    });
+    return out;
+  }
+
   global.BBAudio = {
     analyseUrl: analyseUrl,
     summarise: summarise,
@@ -392,6 +476,7 @@
     measure: measure,
     listen: listen,
     listenToTab: listenToTab,
+    qualitiesOfTrack: qualitiesOfTrack,
     THRESHOLDS: T,
     _centroid: centroid,
     _spread: spread,

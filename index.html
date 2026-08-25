@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-onelens";
+  const BUILD = "2026-08-25-trackrel";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5737,6 +5737,7 @@ Rules:
 
   let listenSeen = [];       // qualities across the whole listen
   let listenStored = false;  // one episode per piece, not per pause
+  let listenFrames = [];     // raw measurements, for track-relative labelling
   let liveTried = false;     // the wide pull happens once, not every 20 frames
   let crossingStored = false;// one memory per crossing, not per render
   let anyTried = false;      // the unbounded search runs once per listen
@@ -5791,7 +5792,16 @@ Rules:
   }
 
   function renderListen() {
-    const q = listenQualities();
+    /* Per-frame labels use fixed thresholds and real music sits between
+       them \u2014 a whole song came back as three axes. Once the track has been
+       heard through, label it against its OWN spread instead. */
+    let q = listenQualities();
+    if (!listening_ && typeof BBAudio !== "undefined" && BBAudio.qualitiesOfTrack) {
+      try {
+        const better = BBAudio.qualitiesOfTrack(listenFrames);
+        if (better && better.length) q = better;
+      } catch (e) {}
+    }
     const measure = document.getElementById("listenMeasure");
     const result = document.getElementById("listenResult");
     if (!measure || !result) return;
@@ -6013,6 +6023,7 @@ Rules:
       // Read locally. Nothing leaves the device.
       audio.src = URL.createObjectURL(f);
       listenSeen = [];
+      listenFrames = [];
       liveTried = false;
       crossingStored = false;
       anyTried = false;
@@ -6027,6 +6038,7 @@ Rules:
       try {
         const h = BBAudio.listen(audio, (m) => {
           if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+          listenFrames.push(m);
         });
         listenStop = h.stop;
       } catch (e) { listenStop = null; }
@@ -6044,12 +6056,14 @@ Rules:
       const measure = document.getElementById("listenMeasure");
       if (measure) measure.textContent = "choose a tab and tick \u2018share tab audio\u2019\u2026";
       listenSeen = [];
+      listenFrames = [];
       listenStored = false;
       liveTried = false;
       crossingStored = false;
       anyTried = false;
       BBAudio.listenToTab((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        listenFrames.push(m);          // raw, for track-relative labelling
         if (listenSeen.length % 20 === 0) renderListen();
       }).then((h) => {
         listenStop = h.stop;
