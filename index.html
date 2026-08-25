@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-dreamwide";
+  const BUILD = "2026-08-25-trace";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5693,6 +5693,20 @@ Rules:
      `autonomous` is the only column that bears on the claim. `bothOwn` is
      the purest case within it: two of the person's own moments joined with
      nothing from outside, while nobody was watching. */
+  /* What the sorting actually did, cumulatively. */
+  function sortingRates() {
+    const s = (memory.sorting) || { weighed: 0, crossed: 0, listens: 0 };
+    const pct = s.weighed ? (s.crossed / s.weighed * 100) : 0;
+    return {
+      listens: s.listens,
+      weighed: s.weighed,
+      crossed: s.crossed,
+      refused: s.weighed - s.crossed,
+      crossRate: pct.toFixed(2) + "%",
+    };
+  }
+  try { window.__bbSorting = sortingRates; } catch (e) {}
+
   function crossingRates() {
     const eps = (memory.episodes || []).filter(function (e) { return e.kind === "crossing"; });
     const auto = eps.filter(function (e) { return e.crossing && e.crossing.autonomous; });
@@ -5789,12 +5803,67 @@ Rules:
   /* One card for a crossing, whatever it crossed from. The source is shown
      and the verified ones are marked, but nothing is drawn differently for
      being from the shelf \u2014 they competed on the same terms. */
+  /* SEEING IT SORT.
+
+     A crossing shown on its own looks like a lucky guess. The elimination
+     is the algorithm \u2014 most candidates are refused, and that refusal is
+     the thing worth watching. So the search reports every passage it
+     weighs, and the count runs live while it works.
+
+     Refused is grey. What crosses is blue. */
+  function startTrace(result) {
+    const box = document.createElement("div");
+    box.style.cssText = "margin:8px 0;padding:8px 10px;border-radius:8px;"
+      + "border:1px solid var(--border);font-size:11px;"
+      + "font-family:ui-monospace,Menlo,monospace;opacity:.8";
+    const line = document.createElement("div");
+    line.textContent = "sorting\u2026";
+    box.appendChild(line);
+    const last = document.createElement("div");
+    last.style.cssText = "margin-top:4px;opacity:.55;white-space:nowrap;"
+      + "overflow:hidden;text-overflow:ellipsis";
+    box.appendChild(last);
+    result.appendChild(box);
+
+    let seen = 0, crossed = 0;
+    return {
+      saw: function (c) {
+        seen++;
+        if (c.crossed) crossed++;
+        line.textContent = "weighed " + seen + "  \u00b7  refused " + (seen - crossed)
+          + "  \u00b7  crossed " + crossed;
+        // Show what it is looking at, in the colour of the verdict.
+        last.style.color = c.crossed ? "#4a63d8" : "";
+        last.textContent = (c.crossed ? "\u25c6 " : "\u00b7 ")
+          + (c.align != null ? c.align.toFixed(2) + "  " : "")
+          + String(c.text || c.source || "").slice(0, 70);
+      },
+      done: function (landed) {
+        /* The rate, not the impression. How many were weighed and how many
+           survived, across every listen. This is the number that says
+           whether the refusal is real. */
+        try {
+          memory.sorting = memory.sorting || { weighed: 0, crossed: 0, listens: 0 };
+          memory.sorting.weighed += seen;
+          memory.sorting.crossed += crossed;
+          memory.sorting.listens += 1;
+          saveMemory();
+        } catch (e) {}
+        last.textContent = "";
+        line.textContent = "weighed " + seen + "  \u00b7  refused " + (seen - crossed)
+          + (landed ? "  \u00b7  one crossed" : "  \u00b7  none crossed");
+        if (landed) { box.style.borderColor = "#4a63d8"; box.style.opacity = "1"; }
+      },
+    };
+  }
+
   function renderCrossingCard(result, best, q) {
     try {
       const e = best.entry;
       const c = document.createElement("div");
+      // A crossing is blue. The searching around it is grey.
       c.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
-        + "border:1px " + (best.verified ? "solid" : "dashed") + " var(--border);"
+        + "border:2px " + (best.verified ? "solid" : "dashed") + " #4a63d8;"
         + "background:var(--panel2)";
       if (e.painting && e.painting.url) {
         const img = document.createElement("img");
@@ -5907,13 +5976,15 @@ Rules:
 
     if (typeof BBLens !== "undefined" && BBLens.anyLens && !listening_ && !anyTried) {
       anyTried = true;
+      const trace = startTrace(result);
       BBLens.anyLens({ modes: { sound: q } }, { valence: 0.3, arousal: 0.5 },
-        { allowSmallCorpus: true, pages: 20, canvases: 8 })
+        { allowSmallCorpus: true, pages: 20, canvases: 8, onConsider: trace.saw })
         .then(function (best) {
+          trace.done(!!best);
           if (!best || (hit && best.entry.id === hit.entry.id)) return;
           renderCrossingCard(result, best, q);
         })
-        .catch(function () {});
+        .catch(function () { trace.done(false); });
     }
 
     /* The chain completes here: a crossing happened, so a memory is made.

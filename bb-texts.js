@@ -280,6 +280,18 @@
         encoded[p.text] = e;
       }
       const t = global.BBLens._textureScore(sig, e);
+      /* Report every candidate, kept or thrown out. The elimination IS the
+         algorithm \u2014 a result with no visible refusal behind it looks like a
+         lucky guess. */
+      if (opts.onConsider) {
+        try {
+          opts.onConsider({
+            source: p.source, text: p.text,
+            align: t.align, score: t.score,
+            crossed: t.score > 0,
+          });
+        } catch (err) {}
+      }
       /* The same guard the lens had, missed here for an hour.
 
          Requiring a shared WORD is the old carrier standing in front of

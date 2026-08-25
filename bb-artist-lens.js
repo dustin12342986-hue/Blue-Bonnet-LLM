@@ -1302,9 +1302,19 @@
   async function anyLens(sig, aff, opts) {
     opts = opts || {};
     const found = [];
+    const say = opts.onConsider || function () {};
 
     // 1. what has been checked by hand
     try {
+      // Walk the corpus visibly rather than silently returning the winner.
+      CORPUS.forEach(function (e) {
+        const t = textureScore(sig, e);
+        try {
+          say({ source: e.source || e.artist, text: e.text,
+                align: t.align, score: t.score, crossed: t.score > 0,
+                from: "corpus" });
+        } catch (err) {}
+      });
       const c = lens(sig, aff, opts);
       if (c) found.push(Object.assign({}, c, { from: "corpus", verified: true }));
     } catch (e) {}
@@ -1313,7 +1323,8 @@
     if (!opts.skipTexts && typeof global.BBTexts !== "undefined") {
       try {
         const t = await global.BBTexts.pickFor(sig, opts.query || null,
-          { pages: opts.pages || 20 });
+          { pages: opts.pages || 20,
+            onConsider: function (c) { say(Object.assign({ from: "text" }, c)); } });
         if (t) found.push(Object.assign({}, t, { from: "text", verified: false }));
       } catch (e) {}
     }
