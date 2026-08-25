@@ -143,13 +143,49 @@
       if (measured[item.url]) { out.push(measured[item.url]); continue; }
       try {
         const m = await global.BBVision.fromURL(item.url, 384);
-        if (!m || !m.qualities.length) continue;
+        if (!m) continue;
         const rec = Object.assign({}, item, m);
         measured[item.url] = rec;
         out.push(rec);
       } catch (e) { /* skip */ }
     }
-    return out;
+    return relative(out);
+  }
+
+  /* QUALITIES RELATIVE TO THE SET, NOT TO A NUMBER I CHOSE.
+
+     BBVision's thresholds come from photographic norms: dark below 0.30
+     luminance, bright above 0.62. Real paintings do not live there. These
+     canvases measured 0.31 to 0.45 — every one of them neither dark nor
+     bright — so almost all produced only "thick" and "rough", a two-word
+     vocabulary that could not match anything. The gallery fetched and
+     measured correctly and then had nothing to say.
+
+     Same mistake as the rarity floor, and the same fix: a painting is dark
+     if it sits at the dark end of THIS set. Positional, not absolute. It
+     holds for Van Gogh, for Rembrandt, and for whatever is added next,
+     because it stops being my number and starts being the corpus's. */
+  function relative(set) {
+    if (set.length < 3) return set;
+    const by = function (f) {
+      return set.map(function (x) { return x[f]; }).sort(function (a, b) { return a - b; });
+    };
+    const at = function (arr, p) { return arr[Math.floor((arr.length - 1) * p)]; };
+    const lum = by("luminance"), sat = by("saturation"), edge = by("edgeDensity");
+    const loL = at(lum, 0.33), hiL = at(lum, 0.67);
+    const loS = at(sat, 0.33), hiS = at(sat, 0.67);
+    const loE = at(edge, 0.33), hiE = at(edge, 0.67);
+
+    return set.map(function (x) {
+      const q = (x.qualities || []).filter(function (w) {
+        // Drop the absolute verdicts; keep anything else BBVision found.
+        return ["bright", "dark", "thick", "thin", "rough", "soft"].indexOf(w) === -1;
+      });
+      if (x.luminance <= loL) q.push("dark"); else if (x.luminance >= hiL) q.push("bright");
+      if (x.saturation <= loS) q.push("thin"); else if (x.saturation >= hiS) q.push("thick");
+      if (x.edgeDensity <= loE) q.push("soft"); else if (x.edgeDensity >= hiE) q.push("rough");
+      return Object.assign({}, x, { qualities: q, relative: true });
+    });
   }
 
   /**
