@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-wider";
+  const BUILD = "2026-08-24-widepull";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5610,10 +5610,10 @@ Rules:
       note.textContent = "Nothing verified shares that texture \u2014 looking wider\u2026";
       result.appendChild(note);
 
-      // Search on the measured qualities themselves. What else would you
-      // look for? The texture IS the query.
-      BBTexts.pickFor({ modes: { sound: q } }, q.join(" ") + " light sound room",
-        { limit: 5 })
+      // NO query. Searching for the measured qualities would find pages
+      // about brightness and then ask whether they feel bright \u2014 the
+      // subject choosing before the lens runs. Pull wide instead.
+      BBTexts.pickFor({ modes: { sound: q } }, null, { pages: 12 })
         .then(function (live) {
           note.remove();
           if (!live) {

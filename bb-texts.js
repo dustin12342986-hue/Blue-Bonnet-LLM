@@ -95,6 +95,43 @@
     return out;
   }
 
+  /* A WIDE PULL, NOT A SUBJECT SEARCH.
+
+     The first version searched Wikisource for the measured qualities \u2014
+     "bright soft released". That finds pages ABOUT brightness and then
+     asks whether they feel bright, which is similarity retrieval wearing
+     the mechanism's clothes. The subject was doing the choosing before the
+     lens ever ran.
+
+     The gallery never had this problem: it pulls a wide set of canvases,
+     measures all of them, and lets the texture choose. This does the same.
+     Random public-domain pages, encoded, and the lens picks with topic
+     subtracted. Nothing about the pull is aimed at what the person said.
+
+     Which is the whole point. A passage should arrive because it FEELS
+     like the moment, and it cannot do that if it was fetched for being
+     about the moment. */
+  async function wide(n) {
+    const url = API
+      + "?action=query&format=json&origin=*"
+      + "&generator=random&grnnamespace=0&grnlimit=" + (n || 10)
+      + "&prop=revisions&rvprop=content&rvslots=main";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Wikisource " + res.status);
+    const data = await res.json();
+    const pages = (data.query && data.query.pages) || {};
+    let all = [];
+    Object.keys(pages).forEach(function (id) {
+      const pg = pages[id];
+      const rev = pg.revisions && pg.revisions[0];
+      const slot = rev && rev.slots && rev.slots.main;
+      const wikitext = (slot && slot["*"]) || (rev && rev["*"]) || "";
+      all = all.concat(passagesFrom(stripWikitext(wikitext), pg.title,
+        "https://en.wikisource.org/?curid=" + id));
+    });
+    return all;
+  }
+
   /**
    * find(query, limit) -> [{ text, source, cite }]
    * Asks Wikisource what exists. Nothing is constructed.
@@ -155,7 +192,12 @@
     const encode = opts.encode || global.__bbSensoryOf;
     if (typeof encode !== "function") return null;
 
-    const passages = await find(query, opts.limit || 5);
+    /* Wide by default. A query is only used when the person NAMED someone
+       \u2014 "something by Thoreau" \u2014 because then the subject is their choice
+       rather than the machine matching on it. */
+    const passages = (query && String(query).trim())
+      ? await find(query, opts.limit || 5)
+      : await wide(opts.pages || 12);
     let best = null;
 
     passages.forEach(function (p) {
@@ -193,6 +235,7 @@
 
   global.BBTexts = {
     find: find,
+    wide: wide,
     pickFor: pickFor,
     stats: stats,
     passagesFrom: passagesFrom,
