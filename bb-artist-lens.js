@@ -103,6 +103,13 @@
        texture and the matching works per-passage. */
     {
       id: "vg-691-starry-sky-colours",
+      // Letter 691 describes the scene he was painting that week. The
+      // identification is scholarly consensus, not an inference from the
+      // text, so it is marked corroborated rather than primary. URL
+      // verified loading 2026-08-24.
+      painting: { title: "Starry Night over the Rh\u00f4ne", year: 1888,
+                  url: "https://upload.wikimedia.org/wikipedia/commons/9/94/Starry_Night_Over_the_Rhone.jpg",
+                  sourcing: "corroborated" },
       artist: "Vincent van Gogh",
       source: "Letter 691, to Theo, Arles, 29 September 1888",
       cite: "vangoghletters.org/vg/letters/let691",
@@ -225,6 +232,10 @@
     /* --- Letter 783, to Theo, Saint-R\u00e9my, 25 June 1889 ----------------- */
     {
       id: "vg-783-cypresses-bottle-green",
+      // Named IN the passage: "Deux \u00e9tudes de cypr\u00e8s".
+      painting: { title: "Cypresses", year: 1889,
+                  url: null, sourcing: "named-in-source",
+                  note: "image URL not yet verified \u2014 do not display until checked" },
       artist: "Vincent van Gogh",
       source: "Letter 783, to Theo, Saint-R\u00e9my, 25 June 1889",
       cite: "vangoghletters.org/vg/letters/let783",
@@ -839,9 +850,41 @@
     return Math.log(CORPUS.length / at) + 0.0001;
   })();
 
+  /* THE MINUS SIGN, WHICH WAS MISSING.
+
+     score = affect + \u03bbs\u00b7sensory \u2212 \u03bbt\u00b7topic. The lens had the first two
+     terms and not the third: textureScore only ever REWARDED shared
+     texture, so it was similarity matching wearing the name.
+
+     It showed up as soon as audio was measured. A recording matched
+     Michelangelo on marble \u2014 sound reaching stone, different subject,
+     texture carried \u2014 which is the mechanism. And the next one matched
+     Berlioz on an orchestra: music reaching a passage about music. Same
+     subject. The ordinary move, and the wrong one.
+
+     A passage's subject is read from which channel dominates it. If that
+     is the same channel the input arrived on, the score is cut. Not to
+     zero \u2014 an occasional same-domain crossing may be worth having \u2014 but
+     enough that a different subject wins whenever one is available. */
+  const TOPIC_PENALTY = 1.6;
+
+  function dominantChannel(modes) {
+    let best = null, n = 0;
+    Object.keys(modes || {}).forEach(function (m) {
+      const c = (modes[m] || []).length;
+      if (c > n) { n = c; best = m; }
+    });
+    return best;
+  }
+
   function textureScore(sig, entry) {
     let score = 0;
     const shared = [];
+
+    // Subtract topic: same domain on both sides is the ordinary match.
+    const mineDomain = dominantChannel(sig.modes);
+    const theirDomain = dominantChannel(entry.modes);
+    const sameSubject = mineDomain && theirDomain && mineDomain === theirDomain;
 
     /* A shared QUALITY crosses channels: Van Gogh's "high" yellow can reach
        Schumann's "high" peaks even though one is sight and one is not. It
@@ -867,7 +910,9 @@
         shared.push(w);
       });
     });
-    return { score: score, shared: shared };
+    if (sameSubject) score -= TOPIC_PENALTY;
+    return { score: score, shared: shared, sameSubject: !!sameSubject,
+             domains: [mineDomain, theirDomain] };
   }
 
   function affectScore(aff, entry) {
@@ -917,8 +962,10 @@
       const t = textureScore(sig || {}, e);
       if (!t.shared.length) return;            // texture is the carrier
       const total = t.score + affectScore(aff, e);
+      if (total <= 0) return;          // topic cost outweighed the texture
       if (!best || total > best.total) {
-        best = { entry: e, total: total, shared: t.shared, texture: t.score };
+        best = { entry: e, total: total, shared: t.shared, texture: t.score,
+                 sameSubject: !!t.sameSubject, domains: t.domains };
       }
     });
     return best;
@@ -963,12 +1010,14 @@
      mostly-European set. Anything wider stays the model's invention. */
   function suggest(sig, aff, opts) {
     const hit = lens(sig, aff, opts);
-    if (!hit || !hit.entry.works || !hit.entry.works.length) return null;
-    return {
-      work: hit.entry.works[0],
-      because: hit.entry,
-      shared: hit.shared,
-    };
+    if (!hit) return null;
+    const e = hit.entry;
+    const work = (e.works && e.works.length) ? e.works[0] : null;
+    // Only offer a painting we can actually show. A named-but-unverified
+    // image is exactly the invented-URL problem in another costume.
+    const painting = (e.painting && e.painting.url) ? e.painting : null;
+    if (!work && !painting) return null;
+    return { work: work, painting: painting, because: e, shared: hit.shared };
   }
 
   function stats() {
@@ -982,6 +1031,7 @@
       primary: CORPUS.filter(function (e) { return e.sourcing === "primary"; }).length,
       corroborated: CORPUS.filter(function (e) { return e.sourcing === "corroborated"; }).length,
       withWorks: CORPUS.filter(function (e) { return e.works && e.works.length; }).length,
+      withPaintings: CORPUS.filter(function (e) { return e.painting; }).length,
     };
   }
 
@@ -999,5 +1049,7 @@
     _textureScore: textureScore,
     _affectScore: affectScore,
     DISTINCT_FLOOR: DISTINCT_FLOOR,
+    TOPIC_PENALTY: TOPIC_PENALTY,
+    dominantChannel: dominantChannel,
   };
 })(typeof window !== "undefined" ? window : globalThis);
