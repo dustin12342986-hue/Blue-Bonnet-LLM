@@ -72,7 +72,12 @@
       + "?action=query&format=json&origin=*"
       + "&generator=search&gsrsearch=" + encodeURIComponent(query)
       + "&gsrlimit=" + (limit || 5)
-      + "&prop=extracts&explaintext=1&exintro=&exlimit=" + (limit || 5);
+      // NOT exintro. That restricts an extract to a page's lead section, and
+      // Wikisource pages are letters, poems and journal entries with no
+      // lead \u2014 so every extract came back empty and every search reported
+      // "no usable passages" while working perfectly.
+      + "&prop=extracts&explaintext=1&exchars=4000&exlimit="
+      + (limit || 5);
 
     const res = await fetch(url);
     if (!res.ok) throw new Error("Wikisource " + res.status);
@@ -87,7 +92,13 @@
     });
 
     // Empty is a failure, not an answer.
-    if (!all.length) throw new Error("no usable passages for " + query);
+    if (!all.length) {
+      const pageCount = Object.keys(pages).length;
+      throw new Error(pageCount
+        ? "found " + pageCount + " page(s) for \u201c" + query + "\u201d but no sentence "
+          + "of usable length in them"
+        : "Wikisource found nothing for \u201c" + query + "\u201d");
+    }
     cache[key] = all;
     return all;
   }
