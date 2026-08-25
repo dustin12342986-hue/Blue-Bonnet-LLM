@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-parallel";
+  const BUILD = "2026-08-25-scanerr";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5906,6 +5906,7 @@ Rules:
   let scanning = false;
   let lastSignature = null;      // whatever came in most recently, any sense
   let scanCount = 0, scanCrossed = 0;
+  let scanError = null;   // a swallowed error here has hidden two bugs already
 
   function feedScanner(modes, aff) {
     if (!modes || !Object.keys(modes).length) return;
@@ -5927,14 +5928,15 @@ Rules:
           scanCrossed++;
           // It landed. Record it and keep going \u2014 that is the difference.
           try {
-            recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
+            const rec = recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
               best.shared || [], { autonomous: true, measured: true,
                                    axes: best.axes || [],
                                    sameSubject: best.sameSubject, verb: "was taking in" });
-          } catch (e) {}
+            if (!rec) scanError = "recordCrossing returned null";
+          } catch (e) { scanError = e.message; }
           try { onScanCrossing(best, sig); } catch (e) {}
         }
-      } catch (e) { /* keep scanning */ }
+      } catch (e) { scanError = "scan: " + e.message; }
       await sleep(scanPause());
     }
   }
@@ -5961,6 +5963,7 @@ Rules:
     window.__bbScan = () => ({
       running: scanning, weighed: scanCount, crossed: scanCrossed,
       feeding: !!lastSignature,
+      lastError: scanError,
       // How big the far end has grown. It accumulates for as long as the
       // app is open, so this is the honest measure of what it is scanning
       // against \u2014 not the twenty pages of one request.
