@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-widepull";
+  const BUILD = "2026-08-24-once";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5513,6 +5513,8 @@ Rules:
 
   let listenSeen = [];       // qualities across the whole listen
   let listenStored = false;  // one episode per piece, not per pause
+  let liveTried = false;     // the wide pull happens once, not every 20 frames
+  let listening_ = false;    // true while a stream is still running
   let listenStop = null;
 
   function listenQualities() {
@@ -5604,7 +5606,13 @@ Rules:
        where there was nothing, and it is labelled so the difference is
        visible \u2014 unverified material should never quietly stand in for
        checked material. */
-    if (!hit && typeof BBTexts !== "undefined") {
+    /* ONCE, WHEN IT STOPS.
+       renderListen runs every 20 frames while a tab streams. Each run wiped
+       the panel and fired a fresh multi-page fetch, so results flickered in
+       and out, the API was hammered, and the last search raced the ones
+       before it. It waits for the stream to end and runs a single time. */
+    if (!hit && typeof BBTexts !== "undefined" && !listening_ && !liveTried) {
+      liveTried = true;
       const note = document.createElement("p");
       note.className = "sub";
       note.textContent = "Nothing verified shares that texture \u2014 looking wider\u2026";
@@ -5613,7 +5621,7 @@ Rules:
       // NO query. Searching for the measured qualities would find pages
       // about brightness and then ask whether they feel bright \u2014 the
       // subject choosing before the lens runs. Pull wide instead.
-      BBTexts.pickFor({ modes: { sound: q } }, null, { pages: 12 })
+      BBTexts.pickFor({ modes: { sound: q } }, null, { pages: 40 })
         .then(function (live) {
           note.remove();
           if (!live) {
@@ -5713,6 +5721,8 @@ Rules:
       // Read locally. Nothing leaves the device.
       audio.src = URL.createObjectURL(f);
       listenSeen = [];
+      liveTried = false;
+      listening_ = true;
       listenStored = false;
       renderListen();
       audio.play().catch(() => {});
@@ -5735,24 +5745,27 @@ Rules:
     const tabBtn = document.getElementById("listenTabBtn");
     if (tabBtn) tabBtn.onclick = () => {
       if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
+        listening_ = false;
         tabBtn.textContent = "Listen to another tab"; renderListen(); return; }
       const measure = document.getElementById("listenMeasure");
       if (measure) measure.textContent = "choose a tab and tick \u2018share tab audio\u2019\u2026";
       listenSeen = [];
       listenStored = false;
+      liveTried = false;
       BBAudio.listenToTab((m) => {
         if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
         if (listenSeen.length % 20 === 0) renderListen();
       }).then((h) => {
         listenStop = h.stop;
+        listening_ = true;
         tabBtn.textContent = "Stop listening";
       }).catch((e) => {
         if (measure) measure.textContent = e.message;
       });
     };
 
-    audio.onpause = renderListen;
-    audio.onended = renderListen;
+    audio.onpause = () => { listening_ = false; renderListen(); };
+    audio.onended = () => { listening_ = false; renderListen(); };
   })();
 
   (function wireDreams() {

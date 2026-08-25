@@ -112,9 +112,17 @@
      like the moment, and it cannot do that if it was fetched for being
      about the moment. */
   async function wide(n) {
+    // grnlimit caps at 20 for anonymous requests, so a larger ask silently
+    // returns 20. Two passes rather than one quiet shortfall.
+    const want = n || 10;
+    if (want > 20) {
+      const a = await wide(20);
+      const b = await wide(want - 20);
+      return a.concat(b);
+    }
     const url = API
       + "?action=query&format=json&origin=*"
-      + "&generator=random&grnnamespace=0&grnlimit=" + (n || 10)
+      + "&generator=random&grnnamespace=0&grnlimit=" + want
       + "&prop=revisions&rvprop=content&rvslots=main";
     const res = await fetch(url);
     if (!res.ok) throw new Error("Wikisource " + res.status);
