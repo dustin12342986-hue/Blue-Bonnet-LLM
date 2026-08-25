@@ -948,20 +948,21 @@
     return { shape: vec, density: pooled.length, live: q.length, qualities: q };
   }
 
-  /* HOW MUCH OF THE WHOLE CROSSING IS SHARED.
+  /* HOW MUCH OF THE CROSSING IS SHARED, AND HOW MUCH THERE IS OF IT.
 
-     This divided by the SMALLER side, so a passage sharing one axis tied a
-     passage sharing five. Everything that aligned at all scored the
-     maximum, nothing could rank above anything else, and four pulls in a
-     row came back at 3.00 \u2014 including passages about superstition and
-     university admissions. A crossing every time is as wrong as none.
+     shared/union is a PROPORTION, so one axis meeting one axis scored
+     1.000 \u2014 identical to five meeting five. A glancing crossing and a whole
+     one were indistinguishable, and glancing ones are far more common in
+     random text. The journal filled with passages that shared nothing but
+     "bright".
 
-     It was a fix for the opposite problem: a cosine punished a short input
-     for being short. The answer is neither. Count the shared axes against
-     the UNION \u2014 everything live on either side. Five of five is a whole
-     crossing. One of five is a glancing one, and it should score like one.
+     Proportion says how clean the crossing is. Coverage says how much of a
+     crossing there is. Both matter, so the score carries both: the
+     proportion decides whether it crosses at all, and the count of shared
+     axes ranks what does.
 
-     Rare is the design. This is where rare comes from. */
+     A passage sharing five axes now outranks one sharing a single axis,
+     which it always should have. */
   function signatureMatch(a, b) {
     if (!a || !b) return 0;
     let shared = 0, union = 0;
@@ -970,7 +971,23 @@
       if (x && y) shared++;
       if (x || y) union++;
     }
-    return union ? shared / union : 0;
+    if (!union || !shared) return 0;
+    const proportion = shared / union;
+    // Depth runs 0..1 across a plausible range of shared axes. Weighted
+    // lightly: a clean crossing on two axes should still beat a muddy one
+    // on four.
+    const depth = Math.min(shared, 5) / 5;
+    return proportion * (0.7 + 0.3 * depth);
+  }
+
+  // The raw counts, for anything that needs to report what carried.
+  function signatureOverlap(a, b) {
+    const out = [];
+    if (!a || !b) return out;
+    for (let i = 0; i < a.shape.length; i++) {
+      if (a.shape[i] && b.shape[i]) out.push(AXES[i]);
+    }
+    return out;
   }
 
   /* THE FLOOR. Set it from real crossings, not from me.
@@ -987,7 +1004,13 @@
 
      Play things, watch what crosses, and set it where the crossings are
      worth reading. That is data. This is a placeholder. */
-  let SIGNATURE_FLOOR = 0.72;
+  /* 0.72 was set when the score was a bare proportion. Weighting coverage
+     in changed the scale under it: three shared axes now scores 0.66 and
+     would be rejected, and three is a real crossing. 0.6 lets three
+     through and still refuses two-clean at 0.41 and bright-alone at 0.19.
+
+     Still a number I chose. Still meant to be set from material. */
+  let SIGNATURE_FLOOR = 0.6;
   function setFloor(v) {
     const n = Number(v);
     if (!isNaN(n) && n > 0 && n <= 1) SIGNATURE_FLOOR = n;
@@ -1359,6 +1382,7 @@
     setFloor: setFloor,
     signature: signature,
     signatureMatch: signatureMatch,
+    signatureOverlap: signatureOverlap,
     TOPIC_PENALTY: TOPIC_PENALTY,
     dominantChannel: dominantChannel,
   };

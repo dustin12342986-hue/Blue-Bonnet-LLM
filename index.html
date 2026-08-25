@@ -294,6 +294,10 @@
         <button id="listenTabBtn" class="more-btn">Listen to another tab</button>
         <span class="sub" style="font-size:11px;margin-left:8px">YouTube, streaming, anything playing</span>
       </div>
+      <div style="margin:6px 0 10px">
+        <button id="listenRoomBtn" class="more-btn">Listen through the mic</button>
+        <span class="sub" style="font-size:11px;margin-left:8px">for phones, or a record in the room</span>
+      </div>
       <audio id="listenAudio" controls style="width:100%;margin:6px 0"></audio>
       <p id="listenMeasure" class="sub" style="font-family:ui-monospace,Menlo,monospace;font-size:11px"></p>
       <div id="listenResult"></div>
@@ -1225,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-union";
+  const BUILD = "2026-08-25-coverage";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5884,8 +5888,13 @@ Rules:
         .catch(function () {});
     }
 
-    // The chain completes here: a crossing happened, so a memory is made.
-    if (hit && !listening_ && !crossingStored) {
+    /* The chain completes here: a crossing happened, so a memory is made.
+
+       This waited for !listening_, so a crossing found while the mic was
+       still open was shown and never stored. The best ones tonight \u2014 read
+       off the screen mid-listen \u2014 are not in the journal because of it. A
+       crossing is a crossing whether or not the sound has stopped. */
+    if (hit && !crossingStored) {
       crossingStored = true;
       try {
         recordCrossing({ modes: { sound: q } }, hit.entry, hit.shared,
@@ -6069,6 +6078,35 @@ Rules:
         listenStop = h.stop;
         listening_ = true;
         tabBtn.textContent = "Stop listening";
+      }).catch((e) => {
+        if (measure) measure.textContent = e.message;
+      });
+    };
+
+    /* The mic. Tab capture is desktop-only, so on a phone this is the whole
+       path. Same analyser, rougher signal, and the frames are marked so a
+       crossing from the room can be told from one off a clean source. */
+    const roomBtn = document.getElementById("listenRoomBtn");
+    if (roomBtn) roomBtn.onclick = () => {
+      if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
+        listening_ = false;
+        roomBtn.textContent = "Listen through the mic"; renderListen(); return; }
+      const measure = document.getElementById("listenMeasure");
+      if (measure) measure.textContent = "listening\u2026 play something out loud";
+      listenSeen = [];
+      listenFrames = [];
+      listenStored = false;
+      liveTried = false;
+      crossingStored = false;
+      anyTried = false;
+      BBAudio.listenToRoom((m) => {
+        if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        listenFrames.push(m);
+        if (listenSeen.length % 20 === 0) renderListen();
+      }).then((h) => {
+        listenStop = h.stop;
+        listening_ = true;
+        roomBtn.textContent = "Stop listening";
       }).catch((e) => {
         if (measure) measure.textContent = e.message;
       });
