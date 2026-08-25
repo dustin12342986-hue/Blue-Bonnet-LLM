@@ -111,18 +111,33 @@
      Which is the whole point. A passage should arrive because it FEELS
      like the moment, and it cannot do that if it was fetched for being
      about the moment. */
+  /* WHERE IT PULLS FROM.
+
+     Random Wikisource is mostly administrative history, statutes and
+     biography. A pull of 79 passages yielded 14 with any sensory axis at
+     all, and the typical one had a single axis. The curated letters were
+     winning not because of a thumb on the scale but because they genuinely
+     ARE perceptual writing and a missionary chronicle is not.
+
+     So the pull is aimed at a KIND of writing, never at what the person
+     said. Poetry, journals, travel, nature \u2014 forms where sensation is the
+     subject. That is the same move the gallery makes by searching for
+     paintings rather than searching someone's words: narrow the medium,
+     never the meaning. */
+  const PERCEPTUAL = [
+    "incategory:Poems", "incategory:Nature", "incategory:Travel_literature",
+    "incategory:Essays", "incategory:Letters", "incategory:Diaries",
+  ];
+
   async function wide(n) {
-    // grnlimit caps at 20 for anonymous requests, so a larger ask silently
-    // returns 20. Two passes rather than one quiet shortfall.
     const want = n || 10;
-    if (want > 20) {
-      const a = await wide(20);
-      const b = await wide(want - 20);
-      return a.concat(b);
-    }
+    // Rotate the form so the pull is not always the same shelf either.
+    const form = PERCEPTUAL[Math.floor(Math.random() * PERCEPTUAL.length)];
     const url = API
       + "?action=query&format=json&origin=*"
-      + "&generator=random&grnnamespace=0&grnlimit=" + want
+      + "&generator=search&gsrsearch=" + encodeURIComponent(form)
+      + "&gsrnamespace=0&gsrlimit=" + Math.min(want, 20)
+      + "&gsrsort=random"
       + "&prop=revisions&rvprop=content&rvslots=main";
     const res = await fetch(url);
     if (!res.ok) throw new Error("Wikisource " + res.status);
@@ -263,6 +278,7 @@
   global.BBTexts = {
     find: find,
     wide: wide,
+    PERCEPTUAL: PERCEPTUAL,
     pickFor: pickFor,
     stats: stats,
     passagesFrom: passagesFrom,
