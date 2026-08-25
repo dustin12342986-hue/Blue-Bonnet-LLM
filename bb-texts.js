@@ -245,7 +245,17 @@
       let e = encoded[p.text];
       if (!e) {
         const s = encode(p.text);
-        if (!s || !Object.keys(s.modes || {}).length) return;
+        /* No tags is not no signature.
+
+           This skipped any passage whose sensoryOf returned nothing, which
+           made sense when tags were the carrier. The signature reads the
+           TEXT now, so a passage can sit squarely on an axis while having
+           no tagged words at all \u2014 and those were being thrown away before
+           anything looked at them. A line measured at 1.000 alignment
+           never reached the scoring.
+
+           The floor decides. Not the tags. */
+        if (!s) return;
         /* MEASURED ON THE SAME TERMS.
 
            A live entry had `original` but no `text`, and signature() reads
