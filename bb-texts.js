@@ -276,7 +276,15 @@
         encoded[p.text] = e;
       }
       const t = global.BBLens._textureScore(sig, e);
-      if (!t.shared.length || t.score <= 0) return;
+      /* The same guard the lens had, missed here for an hour.
+
+         Requiring a shared WORD is the old carrier standing in front of
+         the new one. A passage aligned at 1.000 with an empty overlap is
+         the ideal case \u2014 the axes carried and nothing about the subject
+         came along \u2014 and this threw exactly those away.
+
+         The score already accounts for both terms. Nothing else to check. */
+      if (t.score <= 0) return;
 
       /* The density and quality-name bars that used to sit here were built
          for word matching \u2014 they existed because "bright" appearing once in
