@@ -43,6 +43,26 @@
   let cache = Object.create(null);     // query -> [passage]
   let encoded = Object.create(null);   // pageid -> encoded passage
 
+  /* Wikitext to prose. Deliberately blunt: anything that cannot be cleanly
+     turned into a sentence is dropped rather than half-cleaned, because a
+     passage with markup left in it would be quoted to someone as if the
+     writer had written it. */
+  function stripWikitext(t) {
+    return String(t || "")
+      .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, " ")
+      .replace(/<ref[^>]*\/>/gi, " ")
+      .replace(/\{\{[\s\S]*?\}\}/g, " ")          // templates
+      .replace(/\[\[(?:File|Image|Category):[^\]]*\]\]/gi, " ")
+      .replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1")  // piped links keep the label
+      .replace(/\[\[([^\]]*)\]\]/g, "$1")
+      .replace(/<[^>]+>/g, " ")                    // any remaining html
+      .replace(/^[=*#:;].*$/gm, " ")               // headings, lists
+      .replace(/'{2,}/g, "")                       // bold and italic markup
+      .replace(/&[a-z]+;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   /* Sentences long enough to carry texture, short enough to read. A whole
      page is not a passage; the lens matches on a moment, not a chapter. */
   function passagesFrom(text, title, url) {
@@ -68,16 +88,15 @@
     if (!key) throw new Error("nothing to search for");
     if (cache[key]) return cache[key];
 
+    /* NOT prop=extracts. Wikisource does not serve the TextExtracts API \u2014
+       every page came back with an empty extract, whether or not exintro
+       was set, so the module reported "no usable passages" while the
+       search itself was working. Raw revision content always exists. */
     const url = API
       + "?action=query&format=json&origin=*"
       + "&generator=search&gsrsearch=" + encodeURIComponent(query)
       + "&gsrlimit=" + (limit || 5)
-      // NOT exintro. That restricts an extract to a page's lead section, and
-      // Wikisource pages are letters, poems and journal entries with no
-      // lead \u2014 so every extract came back empty and every search reported
-      // "no usable passages" while working perfectly.
-      + "&prop=extracts&explaintext=1&exchars=4000&exlimit="
-      + (limit || 5);
+      + "&prop=revisions&rvprop=content&rvslots=main";
 
     const res = await fetch(url);
     if (!res.ok) throw new Error("Wikisource " + res.status);
@@ -87,8 +106,11 @@
     let all = [];
     Object.keys(pages).forEach(function (id) {
       const pg = pages[id];
+      const rev = pg.revisions && pg.revisions[0];
+      const slot = rev && rev.slots && rev.slots.main;
+      const wikitext = (slot && slot["*"]) || (rev && rev["*"]) || "";
       const link = "https://en.wikisource.org/?curid=" + id;
-      all = all.concat(passagesFrom(pg.extract, pg.title, link));
+      all = all.concat(passagesFrom(stripWikitext(wikitext), pg.title, link));
     });
 
     // Empty is a failure, not an answer.
@@ -158,6 +180,7 @@
     pickFor: pickFor,
     stats: stats,
     passagesFrom: passagesFrom,
+    stripWikitext: stripWikitext,
     API: API,
   };
 })(typeof window !== "undefined" ? window : globalThis);
