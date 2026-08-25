@@ -1220,7 +1220,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-warm";
+  const BUILD = "2026-08-24-context";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -4020,8 +4020,23 @@ Rules:
     if (!wantsToSee(queryText)) return;
     galleryBusy = true;
     let sig, aff;
-    try { sig = sensoryOf(String(queryText)); aff = affectOf(String(queryText)); }
-    catch (e) { galleryBusy = false; return; }
+    /* THE TEXTURE IS IN WHAT THEY WERE SAYING, NOT IN THE REQUEST.
+       "show me a painting" was being encoded and matched, and it carries no
+       texture at all \u2014 see and painting are not qualities \u2014 so nothing could
+       ever cross and the pick was null every time. Read the recent
+       conversation instead and strip the ask-words out of it. */
+    try {
+      const recent = messages.slice(-6)
+        .filter((m) => m.role === "user")
+        .map((m) => (typeof m.content === "string" ? m.content : ""))
+        .join(" ");
+      // The request itself is stripped of its ask-words; what is left is
+      // whatever they were actually describing.
+      const source = (recent + " " + String(queryText))
+        .replace(/\b(show|see|give|find|play|me|a|an|some|something|paint|painting|picture|art|artwork|canvas)\b/gi, " ");
+      sig = sensoryOf(source);
+      aff = affectOf(recent || String(queryText));
+    } catch (e) { galleryBusy = false; return; }
     BBGallery.pickFor(sig, aff, "vangogh", { n: 5 })
       .then((r) => { galleryPick = r || null; })
       .catch(() => { galleryPick = null; })
