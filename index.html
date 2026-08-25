@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-wikitext";
+  const BUILD = "2026-08-24-wider";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5592,6 +5592,63 @@ Rules:
                       { allowSmallCorpus: true })
         : null;
     } catch (e) { hit = null; }
+
+    /* NOTHING CURATED CROSSED \u2014 SO LOOK WIDER.
+
+       The curated corpus is 29 passages and most textures will not be in
+       it. Wikisource holds millions, so when nothing verified crosses, the
+       live corpus is searched rather than reporting a dead end that is
+       really just a small shelf.
+
+       Verified is tried FIRST and always wins. A live passage only appears
+       where there was nothing, and it is labelled so the difference is
+       visible \u2014 unverified material should never quietly stand in for
+       checked material. */
+    if (!hit && typeof BBTexts !== "undefined") {
+      const note = document.createElement("p");
+      note.className = "sub";
+      note.textContent = "Nothing verified shares that texture \u2014 looking wider\u2026";
+      result.appendChild(note);
+
+      // Search on the measured qualities themselves. What else would you
+      // look for? The texture IS the query.
+      BBTexts.pickFor({ modes: { sound: q } }, q.join(" ") + " light sound room",
+        { limit: 5 })
+        .then(function (live) {
+          note.remove();
+          if (!live) {
+            const none = document.createElement("p");
+            none.className = "sub";
+            none.textContent = "Nothing crossed, verified or live. That is the common "
+              + "answer and the honest one.";
+            result.appendChild(none);
+            return;
+          }
+          const c = document.createElement("div");
+          c.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+            + "border:1px dashed var(--border);background:var(--panel2)";
+          const t = document.createElement("div");
+          t.textContent = "\u201c" + live.entry.text + "\u201d";
+          c.appendChild(t);
+          const src = document.createElement("div");
+          src.className = "sub";
+          src.style.cssText = "margin-top:6px;font-size:12px";
+          src.textContent = live.entry.source;
+          c.appendChild(src);
+          const sh = document.createElement("div");
+          sh.className = "sub";
+          sh.style.cssText = "margin-top:4px;font-size:11px";
+          sh.textContent = "matched on: " + live.shared.join(", ")
+            + "  \u00b7  live from Wikisource, not verified";
+          c.appendChild(sh);
+          result.appendChild(c);
+        })
+        .catch(function () {
+          note.textContent = "Nothing verified shares that texture, and the wider "
+            + "search found nothing either.";
+        });
+      return;
+    }
 
     if (!hit) {
       const p = document.createElement("p");

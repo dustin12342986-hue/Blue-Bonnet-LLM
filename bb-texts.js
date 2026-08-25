@@ -74,6 +74,22 @@
     clean.split(/(?<=[.!?])\s+/).forEach(function (sentence) {
       const s = sentence.trim();
       if (s.length < 60 || s.length > 400) return;
+
+      /* Front matter is not writing. A Wikisource page opens with
+         publication data, and the first pull for "Walden" returned
+         "Walden (1893), Boston and New York: Houghton Mifflin Company."
+         \u2014 a real sentence from a real page and completely useless as a
+         passage. These are the shapes that give it away. */
+      if (/\b(?:published|publisher|copyright|edition|reprinted|vol\.|pp?\.|ISBN)\b/i.test(s)) return;
+      if (/\b(?:Company|Press|Sons|Brothers|Publishing|Publishers|Ltd|Inc)\b/.test(s)) return;
+      if (/\b1[6-9]\d{2}\b.*[:,].*[A-Z][a-z]+ (?:and|&) [A-Z]/.test(s)) return;
+      if (/^[A-Z][a-z]+ \(1[6-9]\d{2}\)/.test(s)) return;
+      // A sentence that is mostly capitals or numbers is a heading or an index.
+      const words = s.split(/\s+/);
+      const caps = words.filter(function (w) { return /^[A-Z]/.test(w); }).length;
+      if (caps / words.length > 0.5) return;
+      // Prose has verbs and small words. A list of names does not.
+      if (!/\b(?:the|a|of|and|is|was|were|to|in|it|that|with|as|for)\b/i.test(s)) return;
       out.push({ text: s, source: title, cite: url, sourcing: "live", lang: "en" });
     });
     return out;
