@@ -915,6 +915,38 @@
              domains: [mineDomain, theirDomain] };
   }
 
+  /* ==========================================================
+     THE GEOMETRY, STATED SO IT STOPS BEING REBUILT WRONG.
+
+         event                                    event
+            \\                                    /
+             sensory input  \u2500\u2500 the carrier \u2500\u2500  sensory input
+              \\                                  /
+               \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500  MEMORY at the crossing  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+              /                                  \\
+        emotion                                connection
+                    \u2191 the PRODUCT, not the input \u2191
+
+     Sensory input is what travels between the two events. Emotion and
+     connection are what the crossing PRODUCES. Memory forms where they
+     meet.
+
+     This lens had affect as a SELECTION term \u2014 it rewarded passages whose
+     feeling already matched the person's. That inverts the geometry: it
+     makes emotion an input, so a dark moment retrieves a dark passage and
+     the person is handed their own state back, deeper. Regression, not a
+     crossing. A mirror that amplifies rather than reflects.
+
+     Affect no longer selects here. The carrier is sensory texture; the
+     subject is subtracted; whatever feeling the passage brings is the
+     product, and it is allowed to be different from theirs. Michelangelo's
+     certainty reaching someone's dark hour is the point, not a mismatch.
+
+     NOTE: dreams still pair on affect. That is the person's OWN memories,
+     where "two moments that felt the same" is exactly the claim. This
+     applies only to what is offered from outside.
+     ========================================================== */
+
   function affectScore(aff, entry) {
     if (!aff || !entry.aff) return 0;
     const dv = Math.abs((aff.valence || 0) - entry.aff.valence);
@@ -961,7 +993,9 @@
       if (opts.strict && !e.verified) return;
       const t = textureScore(sig || {}, e);
       if (!t.shared.length) return;            // texture is the carrier
-      const total = t.score + affectScore(aff, e);
+      // Sensory carries, topic subtracts. Affect is NOT added: emotion is
+      // the product of the crossing, not the thing that selects it.
+      const total = t.score;
       if (total <= 0) return;          // topic cost outweighed the texture
       if (!best || total > best.total) {
         best = { entry: e, total: total, shared: t.shared, texture: t.score,
