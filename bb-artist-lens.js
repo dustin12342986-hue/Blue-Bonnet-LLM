@@ -1052,9 +1052,21 @@
     Object.keys(entry.modes || {}).forEach(function (m) {
       (entry.modes[m] || []).forEach(function (w) { theirWords[w] = 1; });
     });
+    /* AN AXIS NAME IS NOT A SUBJECT.
+
+       This counted every shared word as topic overlap \u2014 including the axis
+       names themselves. Measured audio has no vocabulary except the axes,
+       so its "words" ARE rough, thick, high. A passage that shares those
+       is CARRYING, and it was being charged topic cost for it: a perfect
+       1.000 crossing scored 0.12 and anything slightly stronger went
+       negative. The carrier was being punished for carrying.
+
+       Topic is what a thing is ABOUT \u2014 marble, cypress, truffle. The axes
+       are how it feels, and they belong to the other term entirely. */
     const overlap = [];
     Object.keys(sig.modes || {}).forEach(function (m) {
       (sig.modes[m] || []).forEach(function (w) {
+        if (AXES.indexOf(w) !== -1) return;              // an axis, not a subject
         if (theirWords[w] && overlap.indexOf(w) === -1) overlap.push(w);
       });
     });
@@ -1064,9 +1076,13 @@
        the carrier maxes at 3 and each word cost 1.6. But one shared word
        out of ten is incidental and half of them is the same subject. What
        matters is how much of the input is accounted for by the overlap. */
+    // Counted against SUBJECT words only. A texture made entirely of axes
+    // has no subject to overlap with, so it pays nothing.
     let mineCount = 0;
     Object.keys(sig.modes || {}).forEach(function (m) {
-      mineCount += (sig.modes[m] || []).length;
+      (sig.modes[m] || []).forEach(function (w) {
+        if (AXES.indexOf(w) === -1) mineCount++;
+      });
     });
     const share = mineCount ? overlap.length / mineCount : 0;
     score -= share * 3 * TOPIC_PENALTY;
