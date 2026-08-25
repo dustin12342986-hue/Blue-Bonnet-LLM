@@ -948,30 +948,51 @@
     return { shape: vec, density: pooled.length, live: q.length, qualities: q };
   }
 
-  /* HOW MUCH OF THE SMALLER SIDE IS CARRIED.
+  /* HOW MUCH OF THE WHOLE CROSSING IS SHARED.
 
-     This was a cosine, which punishes a short input: one live axis against
-     a passage with three scored 0.577 and died at the floor, even though
-     the one axis it had was fully present on the other side. Someone says
-     three words; a letter is a paragraph. The shorter side should not be
-     penalised for being short.
+     This divided by the SMALLER side, so a passage sharing one axis tied a
+     passage sharing five. Everything that aligned at all scored the
+     maximum, nothing could rank above anything else, and four pulls in a
+     row came back at 3.00 \u2014 including passages about superstition and
+     university admissions. A crossing every time is as wrong as none.
 
-     So: of the axes the smaller side has, how many does the larger side
-     also have. All of them is a full carry. No channel is compared and no
-     word is compared \u2014 only which axes are live. */
+     It was a fix for the opposite problem: a cosine punished a short input
+     for being short. The answer is neither. Count the shared axes against
+     the UNION \u2014 everything live on either side. Five of five is a whole
+     crossing. One of five is a glancing one, and it should score like one.
+
+     Rare is the design. This is where rare comes from. */
   function signatureMatch(a, b) {
     if (!a || !b) return 0;
-    let shared = 0, na = 0, nb = 0;
+    let shared = 0, union = 0;
     for (let i = 0; i < a.shape.length; i++) {
-      if (a.shape[i]) na++;
-      if (b.shape[i]) nb++;
-      if (a.shape[i] && b.shape[i]) shared++;
+      const x = !!a.shape[i], y = !!b.shape[i];
+      if (x && y) shared++;
+      if (x || y) union++;
     }
-    const smaller = Math.min(na, nb);
-    return smaller ? shared / smaller : 0;
+    return union ? shared / union : 0;
   }
 
-  const SIGNATURE_FLOOR = 0.72;
+  /* THE FLOOR. Set it from real crossings, not from me.
+
+     Union scoring is harsher than what came before, so this number matters
+     more than it did. 0.72 means roughly three quarters of the axes live on
+     either side have to be shared.
+
+     It is the eighth threshold in this project and every previous one I
+     picked by reasoning was wrong. So it is adjustable at runtime:
+
+         BBLens.setFloor(0.6)     // looser \u2014 more crossings, more noise
+         BBLens.setFloor(0.85)    // stricter \u2014 rarer, may starve
+
+     Play things, watch what crosses, and set it where the crossings are
+     worth reading. That is data. This is a placeholder. */
+  let SIGNATURE_FLOOR = 0.72;
+  function setFloor(v) {
+    const n = Number(v);
+    if (!isNaN(n) && n > 0 && n <= 1) SIGNATURE_FLOOR = n;
+    return SIGNATURE_FLOOR;
+  }
 
   function textureScore(sig, entry) {
     let score = 0;
@@ -1334,7 +1355,8 @@
     _textureScore: textureScore,
     _affectScore: affectScore,
     DISTINCT_FLOOR: DISTINCT_FLOOR,
-    SIGNATURE_FLOOR: SIGNATURE_FLOOR,
+    get SIGNATURE_FLOOR() { return SIGNATURE_FLOOR; },
+    setFloor: setFloor,
     signature: signature,
     signatureMatch: signatureMatch,
     TOPIC_PENALTY: TOPIC_PENALTY,
