@@ -254,6 +254,7 @@
 <script src="bb-audio-lens.js"></script>
 <script src="bb-vision.js"></script>
 <script src="bb-gallery.js"></script>
+<script src="bb-texts.js"></script>
 <script src="bb-music.js"></script>
 </head>
 <body>
@@ -1224,8 +1225,11 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-crossing";
+  const BUILD = "2026-08-24-texts";
   try { window.__bbBuild = BUILD; } catch (e) {}
+  // bb-texts encodes live passages with the app's own encoder, so a live
+  // passage is scored on exactly the same terms as a curated one.
+  try { window.__bbSensoryOf = (t) => sensoryOf(t); } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
   // targeted the previous value and silently didn't match, so the string
