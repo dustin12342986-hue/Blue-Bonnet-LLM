@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-coverage";
+  const BUILD = "2026-08-25-dreamwide";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4492,12 +4492,40 @@ Rules:
       + "the texture it shares and stop. Never say what it means or what the painter "
       + "felt.";
   }
+  /* THE WIDER SEARCH, STARTED HERE AND OFFERED NEXT TURN.
+
+     Conversation searched only the 29 curated passages while the listen
+     panel reached millions. It cannot simply await the wider one \u2014 a
+     network search mid-sentence would stall the reply \u2014 so it starts the
+     search on this message and the result is available on the next, the
+     same way the gallery works. The corpus still answers immediately. */
+  let widePick = null, wideBusy = false;
+
+  function startWideSearch(queryText) {
+    if (wideBusy || typeof BBLens === "undefined" || !BBLens.anyLens) return;
+    let sig;
+    try { sig = sensoryOf(String(queryText || "")); } catch (e) { return; }
+    if (!sig || !Object.keys(sig.modes || {}).length) return;
+    wideBusy = true;
+    BBLens.anyLens(sig, affectOf(String(queryText || "")),
+      { pages: 20, canvases: 6, skipArt: true })
+      .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
+      .catch(function () { widePick = null; })
+      .then(function () { wideBusy = false; });
+  }
+
   function artistAside(queryText) {
     if (typeof BBLens === "undefined" || !queryText) return "";
+    startWideSearch(queryText);
     let hit = null;
     try {
       hit = BBLens.lens(sensoryOf(String(queryText)), affectOf(String(queryText)));
-    } catch (e) { return ""; }
+    } catch (e) { hit = null; }
+    // Nothing curated crossed, but something wider did on a previous turn.
+    if (!hit && widePick) {
+      hit = widePick;
+      widePick = null;
+    }
     if (!hit) return "";
     const e = hit.entry;
     noteSupplied(null, e.text);
@@ -6227,7 +6255,20 @@ Rules:
         (a.ep.sensory && Object.keys(a.ep.sensory.modes || {}) || []).forEach((m) => {
           sig.modes[m] = a.ep.sensory.modes[m];
         });
-        artist = BBLens.lens(sig, a.aff);
+        /* THE UNBOUNDED FAR END, WHERE IT MATTERS MOST.
+
+           This searched the 29 curated passages while the listen panel
+           reached millions. Dreams are the autonomous path \u2014 the one the
+           whole experiment rests on \u2014 so it was measuring against the
+           smallest possible far end.
+
+           And dreams have no timing problem: nobody is waiting on a reply,
+           so the network search costs nothing here. It awaits properly. */
+        if (BBLens.anyLens) {
+          artist = await BBLens.anyLens(sig, a.aff, { pages: 20, canvases: 6 });
+        } else {
+          artist = BBLens.lens(sig, a.aff);
+        }
       } catch (e) { artist = null; }
     }
 
