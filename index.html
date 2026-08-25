@@ -1224,7 +1224,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-tab";
+  const BUILD = "2026-08-24-check";
   try { window.__bbBuild = BUILD; } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
@@ -4155,6 +4155,30 @@ Rules:
 
   /* ctx is optional and exists so this can be tested without reaching into
      a closure. Live calls pass nothing and use what was actually supplied. */
+  /* WHAT THE REPLY CLAIMED, KEPT SO IT CAN BE CHECKED.
+
+     Same fix as the painting: do not ask the model to be accurate, state
+     the fact yourself. It suggested a piece and said it carried "thick,
+     veiled, rough"; the measurement came back thin, soft, low. Opposite on
+     both checkable axes. It had chosen on reputation and written texture
+     words over the top.
+
+     So the claim is captured when it is made, and when something is
+     actually listened to, the two are put side by side by the app. The
+     model does not get to narrate whether it was right. */
+  let lastClaim = null;          // { qualities, at }
+
+  function captureClaim(text) {
+    if (typeof BBLens === "undefined" || typeof text !== "string") return;
+    const vocab = Object.keys(BBLens.QUALITIES || {});
+    const low = text.toLowerCase();
+    const found = vocab.filter(function (q) {
+      return new RegExp("\\b" + q + "(?:ly|ness|er|est|y|ed|s)?\\b").test(low);
+    });
+    if (found.length) lastClaim = { qualities: found, at: Date.now() };
+  }
+  try { window.__bbLastClaim = () => lastClaim; } catch (e) {}
+
   function auditReply(text, ctx) {
     if (typeof text !== "string" || !text) return text;
     if (ctx) {
@@ -4225,6 +4249,7 @@ Rules:
           supplied: suppliedUrls.length });
       } catch (e) {}
     }
+    captureClaim(out);
     clearSupplied();
     return out;
   }
@@ -5517,6 +5542,44 @@ Rules:
     }
     result.innerHTML = "";
     if (!q.length) return;
+
+    /* THE CHECK, RENDERED BY THE APP.
+
+       If a texture was claimed in the last hour and something has now been
+       measured, the two go side by side here. Not narrated by the model \u2014
+       the model already had its say and is the thing being checked. */
+    if (lastClaim && (Date.now() - lastClaim.at) < 3600000) {
+      const claimed = lastClaim.qualities;
+      const held = claimed.filter(function (c) { return q.indexOf(c) !== -1; });
+      const missed = claimed.filter(function (c) { return q.indexOf(c) === -1; });
+
+      const card = document.createElement("div");
+      card.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+        + "border:1px solid var(--border);background:var(--panel2);font-size:12px";
+
+      const line = function (label, words, strong) {
+        const d = document.createElement("div");
+        d.style.cssText = "margin:2px 0" + (strong ? ";font-weight:600" : "");
+        d.textContent = label + " " + (words.length ? words.join(", ") : "\u2014");
+        card.appendChild(d);
+      };
+      line("it said:", claimed);
+      line("measured:", q);
+      if (held.length) line("held:", held, true);
+      if (missed.length) line("did not hold:", missed, true);
+
+      const verdict = document.createElement("div");
+      verdict.style.cssText = "margin-top:8px;opacity:.75";
+      verdict.textContent = !held.length
+        ? "Nothing it claimed is in the sound. It chose some other way and "
+          + "described it afterwards."
+        : missed.length
+          ? "Partly. Some of what it said is there and some is not."
+          : "It holds. What it claimed is what is in the sound.";
+      card.appendChild(verdict);
+      result.appendChild(card);
+      lastClaim = null;          // checked once
+    }
 
     let hit = null;
     try {
