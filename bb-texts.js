@@ -213,9 +213,18 @@
       if (!e) {
         const s = encode(p.text);
         if (!s || !Object.keys(s.modes || {}).length) return;
+        /* MEASURED ON THE SAME TERMS.
+
+           A live entry had `original` but no `text`, and signature() reads
+           the text to find which axes are live. So corpus entries got their
+           qualities from their prose and live ones got nothing \u2014 computed
+           from sparse tags alone, they could never compete. The shelf was
+           winning because the other side was being measured with a
+           different instrument. */
         e = Object.assign({}, p, {
           id: "live-" + p.text.slice(0, 24).replace(/\W+/g, "-"),
           artist: p.source,
+          text: p.text,              // <- what signature() actually reads
           original: p.text,
           modes: s.modes,
           aff: { valence: 0, arousal: 0.4 },
@@ -225,6 +234,16 @@
       }
       const t = global.BBLens._textureScore(sig, e);
       if (!t.shared.length || t.score <= 0) return;
+
+      /* The density and quality-name bars that used to sit here were built
+         for word matching \u2014 they existed because "bright" appearing once in
+         a political sentence could carry a whole crossing. The carrier is
+         the axis set now, and the topic term subtracts shared words, so
+         those bars were solving a problem that no longer exists while
+         quietly excluding most live passages. Removed.
+
+         What remains is the same floor everything else clears. */
+
       if (!best || t.score > best.total) {
         best = { entry: e, total: t.score, shared: t.shared,
                  sameSubject: !!t.sameSubject, live: true };
