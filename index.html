@@ -1225,7 +1225,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-auto";
+  const BUILD = "2026-08-25-anysense";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2217,6 +2217,23 @@ BOUNDARIES
 
   /* The memory completes when the person says what the join was. Until
      then it is a bridge that has been built and not yet walked across. */
+  /* Something arrived in the space. Whatever it was \u2014 the dream produced
+     it, or the person said it \u2014 THAT is the memory. It is stored as it
+     came, not summarised, because the whole thing was about not
+     substituting a description for the thing. */
+  function crossingBecame(id, insight, from) {
+    const ep = (memory.episodes || []).filter(function (e) { return e.id === id; })[0];
+    if (!ep || !ep.crossing) return null;
+    const text = String(insight || "").trim();
+    if (!text) return null;
+    ep.insight = text;
+    ep.insightFrom = from || "unknown";     // "dream" or "person"
+    ep.becameSomething = true;
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbCrossingBecame = (i, t, f) => crossingBecame(i, t, f); } catch (e) {}
+
   function completeCrossing(id, said) {
     const ep = (memory.episodes || []).filter(function (e) { return e.id === id; })[0];
     if (!ep || !ep.crossing) return null;
@@ -2325,10 +2342,28 @@ BOUNDARIES
          number nobody felt. So it is left open. The crossing is recorded
          incomplete, and it completes when the person says what it was \u2014
          the same reason this app never tells anyone what they feel. */
-      /* The memory's charge is the CROSSING's, computed from both ends. Not
-         the passage's, not the mood arrived in, and not something a person
-         is asked for. Memory is the result of the chain no matter who runs
-         it. */
+      /* ==================================================
+         WHAT IS AT THE CENTRE.
+
+         Not a number. The centre of a crossing is the RECOGNITION \u2014 the
+         thing that arises when two ends are held together. The aha. The
+         creation. It cannot be computed, because if it could be computed
+         it would not be one.
+
+         Arithmetic was sitting in that place: a valence pair called
+         "emotion", as though the result of a crossing were texture
+         measured against shade. It is not. Those numbers describe the
+         ARMS \u2014 how far the ends were apart, which way it travelled \u2014 and
+         they belong there and nowhere else.
+
+         So the centre starts EMPTY. A crossing is two ends and a carrier
+         and a space. It becomes a memory when something arrives in that
+         space, and until then it is a pairing that has not become
+         anything, which is the honest majority.
+         ================================================== */
+      insight: null,
+      becameSomething: false,
+      // arithmetic about the arms, kept out of the centre
       affect: crossingEmotion((mine && mine.aff) || opts.mineAff, theirs.aff),
     };
     memory.episodes = memory.episodes || [];
@@ -5647,6 +5682,9 @@ Rules:
       prompted: eps.length - auto.length,
       subjectCrossed: crossed.length,
       spokenAbout: said.length,
+      // The only count that means anything: how many pairings became
+      // something. Everything else is apparatus.
+      becameSomething: eps.filter(function (e) { return e.becameSomething; }).length,
       meanShift: meanShift,
     };
   }

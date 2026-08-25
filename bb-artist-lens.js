@@ -877,26 +877,146 @@
     return best;
   }
 
+  /* ==========================================================
+     THE CARRIER IS A SIGNATURE, NOT A WORD.
+
+     This matched on shared literal words. "marble" reaching "marble" \u2014
+     which is the most literal similarity matching there is, and it was
+     sitting inside the mechanism the whole time calling itself a carrier.
+
+     It is also why nothing crossed on the open internet: 57 genuinely
+     perceptual passages came back and not one contained the word marble.
+     They said stone, grain, chill, weight. The lexicon was the ceiling,
+     and the lexicon should never have been doing the work.
+
+     What actually carries is the SHAPE of the sensory content \u2014 which
+     channels are live, in what proportion, how dense. A hand on cold stone
+     and a voice in a cold room have the same signature and share no word.
+     That is a crossing. Marble to marble is not.
+     ========================================================== */
+
+  /* ANY SENSE. THE CHANNEL IS THE DOOR, NOT THE THING.
+
+     The first signature was the distribution ACROSS channels, so touch
+     only ever reached touch and sight only ever reached sight. Aligning a
+     touch moment with a sight passage scored 0.000. That is a wall between
+     the senses built into the carrier \u2014 the opposite of what a carrier is
+     for.
+
+     Sensory input means ANY sense. A high note and a high yellow are the
+     same quality arriving through different doors, and the door does not
+     matter. Van Gogh reached for a musical word to describe a colour
+     because the thing he was pointing at was not owned by either sense.
+
+     So the signature is built from the QUALITIES, pooled across every
+     channel. Which sense delivered them is discarded before comparison. */
+
+  const CHANNELS = ["sight", "sound", "touch", "smell", "taste", "barrier"];
+
+  // The axes a sensation can sit on, regardless of which sense carried it.
+  const AXES = ["high", "low", "bright", "dark", "thick", "thin",
+                "rough", "soft", "tense", "released"];
+
+  /* THE QUALITIES COME FROM THE TEXT, NOT FROM TAGS.
+
+     Reading them off hand-written tags meant only the 29 curated entries
+     could ever be the far end \u2014 and the whole point is that the far end is
+     anything: any writer, any painting, any sound, anywhere.
+
+     Real prose contains cold, rough, heavy, bright on its own. So the
+     qualities are extracted from whatever text is actually there. A
+     Wikisource page, a letter, a measured spectrum and a person talking
+     all go through the same door and nothing has to have been prepared. */
+  function signature(modes, text) {
+    const pooled = [];
+    Object.keys(modes || {}).forEach(function (m) {
+      (modes[m] || []).forEach(function (w) { pooled.push(w); });
+    });
+    // Anything written is read directly. Tags are a shortcut, never a
+    // requirement.
+    if (text) {
+      String(text).toLowerCase().split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
+        if (w) pooled.push(w);
+      });
+    }
+    if (!pooled.length) return null;
+
+    const q = qualitiesOf({ all: pooled });
+    const vec = AXES.map(function (a) { return q.indexOf(a) !== -1 ? 1 : 0; });
+    if (!vec.some(function (v) { return v; })) return null;   // nothing on any axis
+
+    return { shape: vec, density: pooled.length, live: q.length, qualities: q };
+  }
+
+  /* HOW MUCH OF THE SMALLER SIDE IS CARRIED.
+
+     This was a cosine, which punishes a short input: one live axis against
+     a passage with three scored 0.577 and died at the floor, even though
+     the one axis it had was fully present on the other side. Someone says
+     three words; a letter is a paragraph. The shorter side should not be
+     penalised for being short.
+
+     So: of the axes the smaller side has, how many does the larger side
+     also have. All of them is a full carry. No channel is compared and no
+     word is compared \u2014 only which axes are live. */
+  function signatureMatch(a, b) {
+    if (!a || !b) return 0;
+    let shared = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.shape.length; i++) {
+      if (a.shape[i]) na++;
+      if (b.shape[i]) nb++;
+      if (a.shape[i] && b.shape[i]) shared++;
+    }
+    const smaller = Math.min(na, nb);
+    return smaller ? shared / smaller : 0;
+  }
+
+  const SIGNATURE_FLOOR = 0.72;
+
   function textureScore(sig, entry) {
     let score = 0;
     const shared = [];
 
-    // Subtract topic: same domain on both sides is the ordinary match.
+    /* TOPIC IS SHARED CONTENT, NOT SHARED CHANNEL.
+
+       This computed "topic" from which channel dominated, so touch reaching
+       touch counted as the same subject. But channel is a SENSE and topic
+       is what a thing is ABOUT. Marble and a cold room are both touch and
+       are not the same subject.
+
+       Worse, it made the two terms fight: the signature carries BY channel
+       shape, so anything that carried was scored as same-subject and
+       penalised for it.
+
+       The topic signal was sitting there the whole time. Shared literal
+       words are subject overlap \u2014 marble reaching marble is two things
+       ABOUT stone. That is the term to subtract, and it is the exact thing
+       I had been using as the carrier. Backwards, all night.
+
+           score = signature alignment  \u2212  shared-word overlap
+                   \u2191 sensory carries      \u2191 topic subtracts            */
     const mineDomain = dominantChannel(sig.modes);
     const theirDomain = dominantChannel(entry.modes);
-    const sameSubject = mineDomain && theirDomain && mineDomain === theirDomain;
 
     /* A shared QUALITY crosses channels: Van Gogh's "high" yellow can reach
        Schumann's "high" peaks even though one is sight and one is not. It
        is worth less than a shared rare word, because it is a looser thing
        \u2014 enough to put two passages side by side, not enough to claim they
        belong together. */
+    /* QUALITY NAMES ARE NOT A CARRIER.
+
+       bright matching bright is the input matched to itself. dark to dark,
+       soft to soft \u2014 nothing crossed, the same word came back. These are
+       the names of the axes, not things that travel along them.
+
+       They can still ADD to a crossing that a real shared word already
+       made. They cannot make one on their own. */
     const mine = qualitiesOf(sig.modes);
     const theirs = qualitiesOf(entry.modes);
+    let qualityOnly = [];
     mine.forEach(function (q) {
       if (theirs.indexOf(q) === -1) return;
-      score += 0.6;
-      shared.push(q);
+      qualityOnly.push(q);
     });
 
     Object.keys(sig.modes || {}).forEach(function (m) {
@@ -910,8 +1030,52 @@
         shared.push(w);
       });
     });
-    if (sameSubject) score -= TOPIC_PENALTY;
+    // Only now, and only if something real crossed first.
+    if (shared.length) {
+      qualityOnly.forEach(function (q) { score += 0.6; shared.push(q); });
+    }
+
+    /* The signature is the carrier. Shared words, if any, are a detail of
+       how it happened \u2014 they are reported but they no longer decide. */
+    const sigA = signature(sig.modes, sig.text);
+    const sigB = signature(entry.modes, entry.text);
+    const align = signatureMatch(sigA, sigB);
+    if (align < SIGNATURE_FLOOR) return { score: 0, shared: [], sameSubject: false,
+                                          overlap: [], align: align,
+                                          domains: [mineDomain, theirDomain] };
+    score = align * 3;                    // the register carrying, on its own terms
+
+    /* Now subtract topic. Every literal word the two ends share is subject
+       overlap, and each one costs. Two passages about the same thing are
+       what this exists to avoid, however well their registers align. */
+    const theirWords = Object.create(null);
+    Object.keys(entry.modes || {}).forEach(function (m) {
+      (entry.modes[m] || []).forEach(function (w) { theirWords[w] = 1; });
+    });
+    const overlap = [];
+    Object.keys(sig.modes || {}).forEach(function (m) {
+      (sig.modes[m] || []).forEach(function (w) {
+        if (theirWords[w] && overlap.indexOf(w) === -1) overlap.push(w);
+      });
+    });
+    /* Topic cost is a PROPORTION, not a count.
+
+       Charging per word made two shared words fatal to anything, because
+       the carrier maxes at 3 and each word cost 1.6. But one shared word
+       out of ten is incidental and half of them is the same subject. What
+       matters is how much of the input is accounted for by the overlap. */
+    let mineCount = 0;
+    Object.keys(sig.modes || {}).forEach(function (m) {
+      mineCount += (sig.modes[m] || []).length;
+    });
+    const share = mineCount ? overlap.length / mineCount : 0;
+    score -= share * 3 * TOPIC_PENALTY;
+
+    // Same subject when the overlap accounts for most of what was said.
+    const sameSubject = share >= 0.5;
     return { score: score, shared: shared, sameSubject: !!sameSubject,
+             overlap: overlap, overlapShare: Math.round(share * 100) / 100,
+             align: Math.round(align * 1000) / 1000,
              domains: [mineDomain, theirDomain] };
   }
 
@@ -992,14 +1156,19 @@
     CORPUS.forEach(function (e) {
       if (opts.strict && !e.verified) return;
       const t = textureScore(sig || {}, e);
-      if (!t.shared.length) return;            // texture is the carrier
+      // The carrier is the signature. Requiring a shared literal word here
+      // was the OLD carrier standing guard in front of the new one, and it
+      // silently blocked every cross-sense crossing.
+      if (t.score <= 0) return;
       // Sensory carries, topic subtracts. Affect is NOT added: emotion is
       // the product of the crossing, not the thing that selects it.
       const total = t.score;
       if (total <= 0) return;          // topic cost outweighed the texture
       if (!best || total > best.total) {
         best = { entry: e, total: total, shared: t.shared, texture: t.score,
-                 sameSubject: !!t.sameSubject, domains: t.domains };
+                 sameSubject: !!t.sameSubject, overlap: t.overlap || [],
+                 overlapShare: t.overlapShare || 0,
+                 align: t.align, domains: t.domains };
       }
     });
     return best;
@@ -1083,6 +1252,9 @@
     _textureScore: textureScore,
     _affectScore: affectScore,
     DISTINCT_FLOOR: DISTINCT_FLOOR,
+    SIGNATURE_FLOOR: SIGNATURE_FLOOR,
+    signature: signature,
+    signatureMatch: signatureMatch,
     TOPIC_PENALTY: TOPIC_PENALTY,
     dominantChannel: dominantChannel,
   };
