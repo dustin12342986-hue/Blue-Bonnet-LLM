@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-carrier";
+  const BUILD = "2026-08-25-learns";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4266,6 +4266,12 @@ Rules:
   }
   setTimeout(warmGallery, 12000);
   // The scanner runs for as long as the app is open.
+  // A calibration is only worth having if it survives a reload.
+  try {
+    if (memory.calibration && memory.calibration.floor && BBLens.setFloor) {
+      BBLens.setFloor(memory.calibration.floor);
+    }
+  } catch (e) {}
   setTimeout(function () { try { startScanning(); } catch (e) {} }, 8000);
 
   /* SHOW IT DIRECTLY.
@@ -5974,6 +5980,74 @@ Rules:
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  /* ============================================================
+     WHAT YOU KEEP IS WHAT IT LEARNS.
+
+     Nothing got better from use. Play a thousand songs and the algorithm
+     was identical \u2014 the floor stayed where I put it, and I put it there by
+     guessing eight times.
+
+     A kept crossing says the bar was right or too high. A dismissed one
+     says it was too low. That is the only signal that can set a threshold
+     honestly, and it has to come from the person the crossing was for.
+
+     The floor moves in very small steps. One judgement is noise; a hundred
+     is a calibration. And it is bounded, so a run of dismissals cannot
+     starve it into never crossing again.
+     ============================================================ */
+
+  const FLOOR_STEP = 0.004;
+  const FLOOR_MIN = 0.35, FLOOR_MAX = 0.9;
+
+  function learnFromCrossing(kept) {
+    if (typeof BBLens === "undefined" || !BBLens.setFloor) return;
+    let f = BBLens.SIGNATURE_FLOOR;
+    // Kept: the bar is not too low, so it can come down a little and let
+    // more through. Dismissed: it let something weak through, so it rises.
+    f += kept ? -FLOOR_STEP : FLOOR_STEP;
+    f = Math.max(FLOOR_MIN, Math.min(FLOOR_MAX, f));
+    BBLens.setFloor(f);
+    try {
+      memory.calibration = memory.calibration
+        || { kept: 0, dismissed: 0, floor: f };
+      if (kept) memory.calibration.kept++; else memory.calibration.dismissed++;
+      memory.calibration.floor = f;
+      saveMemory();
+    } catch (e) {}
+  }
+  try {
+    window.__bbCalibration = () => (memory.calibration
+      || { kept: 0, dismissed: 0, floor: BBLens.SIGNATURE_FLOOR });
+  } catch (e) {}
+
+  function rateCrossing(ep, best) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:8px;font-size:12px;opacity:.75;"
+      + "display:flex;align-items:center;gap:6px";
+    const t = document.createElement("span");
+    t.textContent = "Worth reading?";
+    wrap.appendChild(t);
+    [["yes", true], ["no", false]].forEach(function (pair) {
+      const b = document.createElement("button");
+      b.textContent = pair[0];
+      b.style.cssText = "font:inherit;padding:1px 9px;border-radius:999px;"
+        + "cursor:pointer;border:1px solid var(--border);background:transparent";
+      b.onclick = function () {
+        try {
+          ep.kept = pair[1];
+          ep.ratedAt = Date.now();
+          saveMemory();
+        } catch (e) {}
+        learnFromCrossing(pair[1]);
+        wrap.textContent = pair[1]
+          ? "kept \u00b7 floor " + BBLens.SIGNATURE_FLOOR.toFixed(3)
+          : "dismissed \u00b7 floor " + BBLens.SIGNATURE_FLOOR.toFixed(3);
+      };
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
   function renderCrossingCard(result, best, q) {
     try {
       const e = best.entry;
@@ -6001,12 +6075,14 @@ Rules:
         + "  \u00b7  from " + best.from
         + (best.verified ? "" : ", not verified");
       c.appendChild(how);
-      result.appendChild(c);
+      let ep = null;
       try {
-        recordCrossing({ modes: { sound: q } }, e, best.shared || [],
+        ep = recordCrossing({ modes: { sound: q } }, e, best.shared || [],
           { measured: true, verb: "heard", axes: best.axes || [],
             sameSubject: best.sameSubject });
       } catch (err) {}
+      if (ep) c.appendChild(rateCrossing(ep, best));
+      result.appendChild(c);
     } catch (err) {}
   }
 
