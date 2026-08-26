@@ -372,11 +372,27 @@
         }
         // Video is only requested because Chrome will not offer the audio
         // checkbox without it. It is stopped immediately.
-        stream.getVideoTracks().forEach(function (t) { t.stop(); });
+        /* Read the tab's own name before dropping the video track.
+
+           "another tab" is useless for checking a crossing \u2014 you cannot
+           verify a correspondence against a track you cannot name. The
+           video track's label is the tab title, which for a music tab is
+           usually the piece itself. It is read here and the track is
+           stopped immediately after, exactly as before. */
+        let label = "";
+        stream.getVideoTracks().forEach(function (t) {
+          if (!label && t.label) label = String(t.label);
+          t.stop();
+        });
+        if (!label) {
+          tracks.forEach(function (t) { if (!label && t.label) label = String(t.label); });
+        }
 
         const audioOnly = new global.MediaStream(tracks);
         const handle = listen(audioOnly, onFrame, opts);
         return {
+          // What the tab calls itself, so a crossing can be checked.
+          label: label,
           stop: function () {
             try { handle.stop(); } catch (e) {}
             tracks.forEach(function (t) { try { t.stop(); } catch (e) {} });
@@ -469,6 +485,50 @@
     return out;
   }
 
+  /* LISTENING THROUGH THE MICROPHONE.
+
+     getDisplayMedia does not capture audio on mobile \u2014 tab sharing is a
+     desktop feature \u2014 so the whole listen path was unreachable on a phone.
+     The mic is not. A song playing in the room can be measured the same
+     way, through the same analyser.
+
+     It is a rougher signal: speaker colouring, room reflections, whatever
+     else is in the air. That is honest and it is recorded on the frames,
+     so a crossing made from a mic listen can be told from one made from a
+     clean source.
+
+     Nothing is recorded. The stream reaches an AnalyserNode and four
+     numbers per frame come back out. */
+  function listenToRoom(onFrame, opts) {
+    opts = opts || {};
+    if (!global.navigator || !global.navigator.mediaDevices
+        || !global.navigator.mediaDevices.getUserMedia) {
+      return Promise.reject(new Error("this browser cannot reach the microphone"));
+    }
+    return global.navigator.mediaDevices
+      .getUserMedia({ audio: {
+        // Every one of these would fight the measurement. Echo cancellation
+        // and noise suppression are tuned to remove exactly the sustained
+        // sound we are trying to measure, and AGC flattens the dynamics
+        // that the flux and spread features read.
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      } })
+      .then(function (stream) {
+        const handle = listen(stream, function (m) {
+          m.viaRoom = true;          // a rougher signal, and marked as one
+          onFrame(m);
+        }, opts);
+        return {
+          stop: function () {
+            try { handle.stop(); } catch (e) {}
+            stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+          },
+        };
+      });
+  }
+
   global.BBAudio = {
     analyseUrl: analyseUrl,
     summarise: summarise,
@@ -476,6 +536,7 @@
     measure: measure,
     listen: listen,
     listenToTab: listenToTab,
+    listenToRoom: listenToRoom,
     qualitiesOfTrack: qualitiesOfTrack,
     THRESHOLDS: T,
     _centroid: centroid,
