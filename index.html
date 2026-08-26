@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-answer";
+  const BUILD = "2026-08-26-blind";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5795,14 +5795,16 @@ Rules:
       if (e.insight || (e.crossing && e.crossing.said)) {
         card.appendChild(answerCrossing(e));
       }
-      if (e.kept === undefined) card.appendChild(rateCrossing(e, { verified: true }));
-      else {
+      if (e.kept === undefined) {
+        card.appendChild(rateCrossing(e, { verified: true }));
+      } else {
         const r = document.createElement("div");
         r.className = "dream-line dim";
         r.style.fontSize = "11px";
         r.textContent = e.kept ? "kept" : "dismissed";
         card.appendChild(r);
       }
+      if (e.blindPicked === undefined) card.appendChild(renderBlindTest(card, e));
       list.appendChild(card);
     });
 
@@ -6360,6 +6362,117 @@ Rules:
     wrap.appendChild(save);
     return wrap;
   }
+
+  /* ============================================================
+     THE TEST THAT SEPARATES THE TWO EXPLANATIONS.
+
+     Five crossings have landed on subject-appropriate material \u2014 a Titanic
+     theme finding an engine room, Glory finding Lincoln \u2014 and the algorithm
+     never sees subject. Two accounts fit:
+
+       COINCIDENCE. Texture is thin, the pool is skewed to one period, and
+       the person completes the meaning afterwards.
+
+       CORRELATION. Texture and subject are not independent in the world. A
+       composer scoring weight and cold reaches for low and dark; a writer
+       describing an engine room reaches for the same. So matching on
+       texture lands on apt material above chance WITHOUT ever seeing
+       subject.
+
+     An audit of the score cannot tell them apart, because neither claims
+     anything extra is in the score.
+
+     What separates them: take another passage carrying the SAME axes,
+     chosen at random from the pool. If the lens's pick feels apter than
+     the decoy at above-chance rates, correlation. If they feel the same,
+     coincidence.
+
+     Shown together, unlabelled, in random order. The person picks the one
+     that fits. Neither they nor the display knows which is which until
+     after.
+     ============================================================ */
+
+  async function decoyFor(ep) {
+    if (!ep || !ep.crossing || typeof BBTexts === "undefined") return null;
+    const axes = (ep.crossing.carrier || []).slice();
+    if (!axes.length) return null;
+    let pool = [];
+    try { pool = await BBTexts.wide(20); } catch (e) { return null; }
+
+    // Same axes, different passage. Not similar to the pick — equivalent to it.
+    const want = axes.slice().sort().join(",");
+    const theirs = (ep.crossing.theirs && ep.crossing.theirs.text) || "";
+    const matches = [];
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      if (p.text === theirs) continue;
+      const sg = BBLens.signature({}, p.text);
+      if (!sg) continue;
+      if (sg.qualities.slice().sort().join(",") !== want) continue;
+      matches.push(p);
+    }
+    if (!matches.length) return null;
+    return matches[Math.floor(Math.random() * matches.length)];
+  }
+
+  function renderBlindTest(card, ep) {
+    const btn = document.createElement("button");
+    btn.textContent = "test it";
+    btn.className = "more-btn";
+    btn.style.cssText = "margin-top:6px;font-size:12px";
+    btn.onclick = async function () {
+      btn.textContent = "finding one with the same texture\u2026";
+      const decoy = await decoyFor(ep);
+      if (!decoy) { btn.textContent = "nothing else carries those axes"; return; }
+      btn.remove();
+
+      const real = { text: (ep.crossing.theirs && ep.crossing.theirs.text) || "",
+                     source: (ep.crossing.theirs && ep.crossing.theirs.source) || "",
+                     isPick: true };
+      const fake = { text: decoy.text, source: decoy.source, isPick: false };
+      const pair = Math.random() < 0.5 ? [real, fake] : [fake, real];
+
+      const box = document.createElement("div");
+      box.style.cssText = "margin-top:8px";
+      const q = document.createElement("div");
+      q.className = "sub";
+      q.style.cssText = "font-size:12px;margin-bottom:6px";
+      q.textContent = "Both carry " + (ep.crossing.carrier || []).join(", ")
+        + ". Which one fits?";
+      box.appendChild(q);
+
+      pair.forEach(function (opt, i) {
+        const b = document.createElement("button");
+        b.style.cssText = "display:block;width:100%;text-align:left;font:inherit;"
+          + "font-size:12px;margin:4px 0;padding:8px 10px;border-radius:8px;"
+          + "border:1px solid var(--border);background:transparent;color:inherit;"
+          + "cursor:pointer";
+        b.textContent = String(opt.text).slice(0, 180);
+        b.onclick = function () {
+          try {
+            memory.blindTest = memory.blindTest || { right: 0, wrong: 0 };
+            if (opt.isPick) memory.blindTest.right++; else memory.blindTest.wrong++;
+            ep.blindPicked = opt.isPick;
+            saveMemory();
+          } catch (e) {}
+          box.innerHTML = "";
+          const r = document.createElement("div");
+          r.className = "sub";
+          r.style.cssText = "font-size:12px";
+          const t = (memory.blindTest || {});
+          r.textContent = (opt.isPick ? "That was the lens's pick." : "That was the decoy.")
+            + "   \u00b7   " + (t.right || 0) + " of " + ((t.right || 0) + (t.wrong || 0));
+          box.appendChild(r);
+        };
+        box.appendChild(b);
+      });
+      card.appendChild(box);
+    };
+    return btn;
+  }
+  try {
+    window.__bbBlind = () => (memory.blindTest || { right: 0, wrong: 0 });
+  } catch (e) {}
 
   function rateCrossing(ep, best) {
     const wrap = document.createElement("div");
