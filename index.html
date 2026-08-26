@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-source";
+  const BUILD = "2026-08-26-dedupe";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5705,6 +5705,28 @@ Rules:
       }
       if (touched) fixed++;
     });
+    /* Collapse duplicates already stored.
+
+       Suppression stops new repeats; it cannot remove the ones recorded
+       before it existed. The same passage sits in the journal a dozen
+       times, which is one crossing written down a dozen times.
+
+       The earliest of each is kept \u2014 that is when it actually happened \u2014
+       along with anything that was rated or produced a question, because
+       those carry information the duplicates do not. */
+    const seenText = Object.create(null);
+    const keep = [];
+    let dropped = 0;
+    (memory.episodes || []).forEach(function (e) {
+      if (e.kind !== "crossing" || !e.crossing) { keep.push(e); return; }
+      const key = String((e.crossing.theirs && e.crossing.theirs.text) || "").slice(0, 120);
+      if (!key) { keep.push(e); return; }
+      const worth = e.kept !== undefined || e.insight;
+      if (!seenText[key] || worth) { seenText[key] = 1; keep.push(e); return; }
+      dropped++;
+    });
+    if (dropped) { memory.episodes = keep; fixed += dropped; }
+
     if (fixed) saveMemory();
     return fixed;
   }
