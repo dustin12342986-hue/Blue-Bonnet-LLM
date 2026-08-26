@@ -1229,11 +1229,13 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-produce";
+  const BUILD = "2026-08-26-repair";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
   try { window.__bbSensoryOf = (t) => sensoryOf(t); } catch (e) {}
+  // A live passage should carry its own charge, read from its own words.
+  try { window.__bbAffectOf = (t) => affectOf(t); } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
   // targeted the previous value and silently didn't match, so the string
@@ -5634,6 +5636,53 @@ Rules:
 
      They render above the dreams, newest first, with what carried, where
      it came from, and whether it has been checked. */
+  /* CROSSINGS ALREADY STORED, REPAIRED.
+
+     The ones recorded before the live path returned its axes have an empty
+     carrier and a charge of zero \u2014 "carried on \u2014 \u00b7 moved 0" in the journal.
+     Both are recoverable: the two ends are saved in full, so the axes can
+     be recomputed and the passage's charge read from its own words.
+
+     Runs once. Nothing is invented \u2014 it derives from what was already
+     kept, and anything it cannot recover it leaves alone. */
+  function repairCrossings() {
+    if (typeof BBLens === "undefined" || !BBLens.signature) return 0;
+    let fixed = 0;
+    (memory.episodes || []).forEach(function (e) {
+      if (e.kind !== "crossing" || !e.crossing) return;
+      const c = e.crossing;
+      const mineText = (e.turns && e.turns[0] && e.turns[0].text) || "";
+      const theirText = (c.theirs && c.theirs.text) || "";
+      let touched = false;
+
+      if (!c.carrier || !c.carrier.length) {
+        try {
+          const a = BBLens.signature((c.mine && c.mine.modes) || {}, mineText);
+          const b = BBLens.signature({}, theirText);
+          const axes = BBLens.signatureOverlap(a, b);
+          if (axes.length) { c.carrier = axes; touched = true; }
+        } catch (err) {}
+      }
+
+      // A charge of exactly zero on their end is the old placeholder.
+      const flat = c.theirCharge
+        && c.theirCharge.valence === 0 && c.theirCharge.arousal === 0.4;
+      if ((!c.theirCharge || flat) && theirText && typeof affectOf === "function") {
+        try {
+          const aff = affectOf(theirText);
+          c.theirCharge = aff;
+          c.emotion = crossingEmotion(c.mineCharge, aff);
+          e.affect = c.emotion;
+          touched = true;
+        } catch (err) {}
+      }
+      if (touched) fixed++;
+    });
+    if (fixed) saveMemory();
+    return fixed;
+  }
+  try { window.__bbRepair = () => repairCrossings(); } catch (e) {}
+
   function renderCrossings(list) {
     const all = (memory.episodes || [])
       .filter(function (e) { return e.kind === "crossing"; })
@@ -5708,9 +5757,11 @@ Rules:
     list.appendChild(rule);
   }
 
+  let repaired = false;
   function renderDreams() {
     const list = document.getElementById("dreamList");
     if (!list) return;
+    if (!repaired) { repaired = true; try { repairCrossings(); } catch (e) {} }
     list.innerHTML = "";
     renderCrossings(list);
     const all = dreams();

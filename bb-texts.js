@@ -352,7 +352,13 @@
           text: p.text,              // <- what signature() actually reads
           original: p.text,
           modes: s.modes,
-          aff: { valence: 0, arousal: 0.4 },
+          /* Read the passage's own charge from its words rather than
+             handing every live entry a flat zero. With zero on one end the
+             arms always computed to nothing \u2014 "moved 0" on every crossing \u2014
+             while the feeling was sitting in the text unread. */
+          aff: (typeof global.__bbAffectOf === "function")
+            ? global.__bbAffectOf(p.text)
+            : { valence: 0, arousal: 0.4 },
           verified: false,
         });
         encoded[p.text] = e;
@@ -390,8 +396,14 @@
          What remains is the same floor everything else clears. */
 
       if (!best || t.score > best.total) {
-        best = { entry: e, total: t.score, shared: t.shared,
-                 sameSubject: !!t.sameSubject, live: true };
+        /* The axes that carried. Without this the scanner recorded a
+           crossing with an empty carrier \u2014 "carried on \u2014" in the journal,
+           which is the evidence missing from the evidence. */
+        const axes = global.BBLens.signatureOverlap(
+          global.BBLens.signature(sig.modes, sig.text),
+          global.BBLens.signature(e.modes, e.text));
+        best = { entry: e, total: t.score, shared: t.shared, axes: axes,
+                 sameSubject: !!t.sameSubject, align: t.align, live: true };
       }
     });
     return best;
