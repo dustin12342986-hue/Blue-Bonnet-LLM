@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-25-journal";
+  const BUILD = "2026-08-25-produce";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2298,6 +2298,63 @@ BOUNDARIES
       measured: !!opts.measured,
     };
   }
+
+  /* ============================================================
+     THE CONNECTION IS PRODUCED, NOT COMPUTED.
+
+     crossingConnection returns a distance and a carrier \u2014 arithmetic on
+     what both ends already had. Nothing is made. Two events arrive with
+     their charges and it averages them.
+
+     But a crossing is supposed to CREATE something: two unrelated events,
+     sensory input passing between them, and connection and emotion coming
+     into being where they meet. Averaging two numbers is not that.
+
+     And the material for it is already here. The artists wrote down what
+     they meant. That is the entire reason the corpus holds their own words
+     instead of descriptions of them \u2014 and the crossing path was scoring
+     the texture and throwing the account away.
+
+     So the connection is generated from BOTH ends in their own words, and
+     it is asked for as a question rather than a verdict, because the same
+     rule holds here as everywhere: it must not tell the person what the
+     join means. It offers the join. They see it.
+     ============================================================ */
+
+  async function generateConnection(ep) {
+    if (!ep || !ep.crossing) return null;
+    const c = ep.crossing;
+    const mineText = (ep.turns && ep.turns[0] && ep.turns[0].text) || "";
+    const theirText = (c.theirs && c.theirs.text) || "";
+    if (!mineText || !theirText) return null;
+
+    const prompt =
+      "Two unrelated things met.\n\n"
+      + "ONE: " + mineText.slice(0, 400) + "\n\n"
+      + "THE OTHER: \u201c" + theirText.slice(0, 400) + "\u201d"
+      + ((c.theirs && c.theirs.source) ? "\n\u2014 " + c.theirs.source : "")
+      + "\n\nWhat carried between them: " + ((c.carrier || []).join(", ") || "texture")
+      + ".\n\nThese are about different things and that is the point. Do NOT "
+      + "explain what the connection means, do NOT tell them what to feel, and "
+      + "do NOT summarise either side back to them. Write ONE short question "
+      + "that holds the two together and hands the looking to them. If nothing "
+      + "real is there, reply with exactly: {}";
+
+    try {
+      const out = await dreamCall(
+        "You hold two unrelated things together and ask one question about "
+        + "the join. You never say what it means.", prompt);
+      const t = String(out || "").trim();
+      if (!t || t === "{}" || t.length < 8) return null;
+      c.connection = Object.assign({}, c.connection || {}, { question: t });
+      ep.becameSomething = true;
+      ep.insight = t;
+      ep.insightFrom = "crossing";
+      saveMemory();
+      return t;
+    } catch (e) { return null; }
+  }
+  try { window.__bbGenerateConnection = (e) => generateConnection(e); } catch (e) {}
 
   function recordCrossing(mine, theirs, carrier, opts) {
     /* An empty carrier used to mean no crossing. It now means the purest
@@ -5603,6 +5660,15 @@ Rules:
         + (c.theirs && c.theirs.verified === false ? "  \u00b7  live, not verified" : "");
       card.appendChild(when);
 
+      // What the crossing MADE. The two ends are below it, because the
+      // thing that came into being is what matters, not the pair.
+      if (e.insight) {
+        const made = document.createElement("div");
+        made.className = "dream-line";
+        made.style.cssText = "color:#4a63d8;font-size:14px;margin:2px 0 6px";
+        made.textContent = e.insight;
+        card.appendChild(made);
+      }
       if (c.theirs && c.theirs.text) {
         const q = document.createElement("div");
         q.className = "dream-line";
@@ -6009,6 +6075,8 @@ Rules:
                                    axes: best.axes || [],
                                    sameSubject: best.sameSubject, verb: "was taking in" });
             if (!rec) scanError = "recordCrossing returned null";
+            // A crossing that produces nothing is a match, not a crossing.
+            else generateConnection(rec).catch(function () {});
           } catch (e) { scanError = e.message; }
           try { onScanCrossing(best, sig); } catch (e) {}
         }
@@ -6183,6 +6251,17 @@ Rules:
           { measured: true, verb: "heard", axes: best.axes || [],
             sameSubject: best.sameSubject });
       } catch (err) {}
+      if (ep) {
+        const q = document.createElement("div");
+        q.className = "sub";
+        q.style.cssText = "margin-top:8px;font-size:13px;color:#4a63d8";
+        q.textContent = "\u2026";
+        c.appendChild(q);
+        generateConnection(ep).then(function (t) {
+          q.textContent = t || "";
+          if (!t) q.remove();
+        }).catch(function () { q.remove(); });
+      }
       if (ep) c.appendChild(rateCrossing(ep, best));
       result.appendChild(c);
     } catch (err) {}
