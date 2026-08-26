@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-axesfix";
+  const BUILD = "2026-08-26-answer";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5791,6 +5791,10 @@ Rules:
 
       // The same question the listen panel asks, so a crossing found in the
       // background can still teach the floor.
+      // The question wants an answer, and the answer is the memory.
+      if (e.insight || (e.crossing && e.crossing.said)) {
+        card.appendChild(answerCrossing(e));
+      }
       if (e.kept === undefined) card.appendChild(rateCrossing(e, { verified: true }));
       else {
         const r = document.createElement("div");
@@ -6298,6 +6302,65 @@ Rules:
       || { kept: 0, dismissed: 0, floor: BBLens.SIGNATURE_FLOOR });
   } catch (e) {}
 
+  /* ANSWERING IT.
+
+     A crossing produces a question and there was nowhere to put the
+     answer. The question is asked, the recognition happens, and it lands
+     nowhere \u2014 which is the chain stopping one step short of the thing it
+     exists for.
+
+     What they write IS the memory. Not a rating of the crossing, not a
+     note about it: the thing that came into being where the two ends met.
+     It sits beside the computed arms, never replacing them, because the
+     arithmetic describes the join and this is what the join produced. */
+  function answerCrossing(ep) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:8px";
+
+    if (ep.crossing && ep.crossing.said) {
+      const said = document.createElement("div");
+      said.className = "dream-line";
+      said.style.cssText = "font-size:13px;padding-left:10px;"
+        + "border-left:2px solid #4a63d8";
+      said.textContent = ep.crossing.said;
+      wrap.appendChild(said);
+      return wrap;
+    }
+
+    const box = document.createElement("textarea");
+    box.rows = 2;
+    box.placeholder = "what it brought up\u2026";
+    box.style.cssText = "width:100%;font:inherit;font-size:13px;padding:6px 8px;"
+      + "border-radius:8px;border:1px solid var(--border);background:transparent;"
+      + "color:inherit;resize:vertical";
+    wrap.appendChild(box);
+
+    const save = document.createElement("button");
+    save.textContent = "keep this";
+    save.className = "more-btn";
+    save.style.cssText = "margin-top:6px;font-size:12px";
+    save.onclick = function () {
+      const t = box.value.trim();
+      if (!t) return;
+      try {
+        completeCrossing(ep.id, t);
+        // Their words are the memory, so the crossing has become something.
+        ep.becameSomething = true;
+        if (!ep.insight) { ep.insight = t; ep.insightFrom = "person"; }
+        saveMemory();
+      } catch (e) {}
+      wrap.innerHTML = "";
+      const said = document.createElement("div");
+      said.className = "dream-line";
+      said.style.cssText = "font-size:13px;padding-left:10px;"
+        + "border-left:2px solid #4a63d8";
+      said.textContent = t;
+      wrap.appendChild(said);
+    };
+    wrap.appendChild(save);
+    return wrap;
+  }
+
   function rateCrossing(ep, best) {
     const wrap = document.createElement("div");
     wrap.style.cssText = "margin-top:8px;font-size:12px;opacity:.75;"
@@ -6367,7 +6430,8 @@ Rules:
         c.appendChild(q);
         generateConnection(ep).then(function (t) {
           q.textContent = t || "";
-          if (!t) q.remove();
+          if (!t) { q.remove(); return; }
+          c.appendChild(answerCrossing(ep));
         }).catch(function () { q.remove(); });
       }
       if (ep) c.appendChild(rateCrossing(ep, best));
