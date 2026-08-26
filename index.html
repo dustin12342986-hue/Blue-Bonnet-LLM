@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-tabname";
+  const BUILD = "2026-08-26-axesfix";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -6482,8 +6482,11 @@ Rules:
     if (hit && !crossingStored) {
       crossingStored = true;
       try {
+        // The axes, like every other path. Without them the journal shows
+        // "carried on \u2014" and the crossing has no evidence attached.
         recordCrossing({ modes: { sound: q } }, hit.entry, hit.shared,
-          { measured: true, verb: "heard", heardIn: listenSource });
+          { measured: true, verb: "heard", heardIn: listenSource,
+            axes: hit.axes || [] });
       } catch (e) {}
     }
 
@@ -6544,7 +6547,8 @@ Rules:
           result.appendChild(c);
           try {
             recordCrossing({ modes: { sound: q } }, live.entry, live.shared,
-              { measured: true, verb: "heard", heardIn: listenSource });
+              { measured: true, verb: "heard", heardIn: listenSource,
+                axes: live.axes || [] });
           } catch (e) {}
         })
         .catch(function () {
@@ -6671,6 +6675,10 @@ Rules:
         /* The tab names itself. Chrome reports the tab title as the track
            label, which for a music tab is usually the piece. Falls back to
            the generic only when the browser gives nothing. */
+        /* Chrome sometimes hands back an internal stream id rather than the
+           tab title \u2014 "web-contents-media-stream://0FDB..." \u2014 which is worse
+           than the generic because it looks like information and is not. */
+        if (h.label && /^[a-z-]+:\/\//i.test(h.label.trim())) h.label = "";
         listenSource = (h.label && h.label.trim())
           ? h.label.replace(/\s*[-\u2013\u2014|]\s*(YouTube|Spotify|SoundCloud).*$/i, "").trim()
           : "another tab";
