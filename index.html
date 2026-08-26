@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-repair";
+  const BUILD = "2026-08-26-source";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2358,7 +2358,28 @@ BOUNDARIES
   }
   try { window.__bbGenerateConnection = (e) => generateConnection(e); } catch (e) {}
 
+  /* THE SAME PASSAGE CANNOT KEEP WINNING.
+
+     A texture barely changes between passes, so once a passage clears the
+     floor it clears it again a few seconds later, and again \u2014 the journal
+     fills with one quote repeated. That is not a crossing happening many
+     times; it is one crossing recorded many times.
+
+     Once recorded, a passage is set aside for a while. If it is genuinely
+     the right answer it will come back after something else has had a
+     turn. */
+  const CROSSED_RECENTLY_MS = 20 * 60 * 1000;
+  let recentlyCrossed = Object.create(null);
+
+  function alreadyCrossed(theirs) {
+    const key = String((theirs && theirs.text) || "").slice(0, 120);
+    if (!key) return false;
+    const when = recentlyCrossed[key];
+    return !!when && (Date.now() - when) < CROSSED_RECENTLY_MS;
+  }
+
   function recordCrossing(mine, theirs, carrier, opts) {
+    if (alreadyCrossed(theirs)) return null;
     /* An empty carrier used to mean no crossing. It now means the purest
        kind: the axes carried and no word came along with them. Every scan
        crossing was being silently dropped by this guard \u2014 counted, never
@@ -2373,7 +2394,8 @@ BOUNDARIES
       kind: "crossing",
       // Written as the person's own line: this happened to them.
       turns: [{ role: "user", text:
-        "Something I " + (opts.verb || "took in") + " crossed with "
+        "Something I " + (opts.verb || "took in")
+        + (opts.heardIn ? " \u2014 " + opts.heardIn + " \u2014" : "") + " crossed with "
         + (theirs.artist || theirs.source || "something written")
         + " on " + carrier.join(", ") + ". Their words: \u201c"
         + String(theirs.text || "").slice(0, 300) + "\u201d" }],
@@ -2388,6 +2410,8 @@ BOUNDARIES
         carrier: carrier.slice(),
         // Both ends' charges, as facts about each end.
         mineCharge: (mine && mine.aff) || (opts.mineAff || null),
+        // What was playing. Without it a crossing cannot be checked.
+        heardIn: opts.heardIn || null,
         theirCharge: theirs.aff || null,
         // The two arms, COMPUTED. Neither end supplies them and neither
         // does anyone else \u2014 they are the result of the chain running.
@@ -2437,6 +2461,9 @@ BOUNDARIES
     };
     memory.episodes = memory.episodes || [];
     memory.episodes.push(ep);
+    try {
+      recentlyCrossed[String((theirs && theirs.text) || "").slice(0, 120)] = Date.now();
+    } catch (e) {}
     pruneEpisodes();
     saveMemory();
     return ep;
@@ -5705,6 +5732,7 @@ Rules:
       when.className = "dream-line dim";
       when.style.fontSize = "11px";
       when.textContent = new Date(e.at).toLocaleString()
+        + (c.heardIn ? "  \u00b7  while " + c.heardIn + " played" : "")
         + "  \u00b7  " + (c.autonomous ? "found on its own" : "asked for")
         + (c.theirs && c.theirs.verified === false ? "  \u00b7  live, not verified" : "");
       card.appendChild(when);
@@ -5993,6 +6021,13 @@ Rules:
   let listenSeen = [];       // qualities across the whole listen
   let listenStored = false;  // one episode per piece, not per pause
   let listenFrames = [];     // raw measurements, for track-relative labelling
+  /* WHAT IT WAS LISTENING TO.
+
+     Every crossing said "Something I heard crossed with\u2026" and never what.
+     Without the source there is no way to know what fired it, which makes
+     the crossing unreadable as evidence \u2014 you cannot check a correspondence
+     against a track you cannot name. */
+  let listenSource = "";
   let liveTried = false;     // the wide pull happens once, not every 20 frames
   let crossingStored = false;// one memory per crossing, not per render
   let anyTried = false;      // the unbounded search runs once per listen
@@ -6299,7 +6334,7 @@ Rules:
       let ep = null;
       try {
         ep = recordCrossing({ modes: { sound: q } }, e, best.shared || [],
-          { measured: true, verb: "heard", axes: best.axes || [],
+          { measured: true, verb: "heard", axes: best.axes || [], heardIn: listenSource,
             sameSubject: best.sameSubject });
       } catch (err) {}
       if (ep) {
@@ -6426,7 +6461,7 @@ Rules:
       crossingStored = true;
       try {
         recordCrossing({ modes: { sound: q } }, hit.entry, hit.shared,
-          { measured: true, verb: "heard" });
+          { measured: true, verb: "heard", heardIn: listenSource });
       } catch (e) {}
     }
 
@@ -6487,7 +6522,7 @@ Rules:
           result.appendChild(c);
           try {
             recordCrossing({ modes: { sound: q } }, live.entry, live.shared,
-              { measured: true, verb: "heard" });
+              { measured: true, verb: "heard", heardIn: listenSource });
           } catch (e) {}
         })
         .catch(function () {
@@ -6559,6 +6594,7 @@ Rules:
       if (!f) return;
       // Read locally. Nothing leaves the device.
       audio.src = URL.createObjectURL(f);
+      listenSource = String(f.name || "").replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ");
       listenSeen = [];
       listenFrames = [];
       liveTried = false;
@@ -6610,6 +6646,7 @@ Rules:
       }).then((h) => {
         listenStop = h.stop;
         listening_ = true;
+        listenSource = "another tab";
         tabBtn.textContent = "Stop listening";
         // Hunt while it listens, not after.
         try {
@@ -6648,6 +6685,7 @@ Rules:
       }).then((h) => {
         listenStop = h.stop;
         listening_ = true;
+        listenSource = "the room";
         roomBtn.textContent = "Stop listening";
         // Hunt while it listens, not after.
         try {
