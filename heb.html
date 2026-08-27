@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ADV Media — HEB ISD</title>
+<link rel="apple-touch-icon" href="./icon-192.png" />
+<meta name="theme-color" content="#4A8FC0" />
+
+<!--
+  ============================================================================
+  ADV MEDIA — HEB ISD
+  ============================================================================
+  Hurst-Euless-Bedford ISD. Unlike AISD there is no client request portal:
+  HEB work is scheduled internally, so Dustin and Aracely create the events
+  here and crew pick up shifts from them.
+
+  The contract covers BOTH broadcasts and event labor, so an event carries a
+  `kind` and the role palette changes to match.
+
+  WHERE THE DATA LIVES — all shared with the CISD and AISD apps, no new
+  Firebase paths and no rules changes needed:
+    clientEvents/{eventId}        the event itself, tagged client:"HEB"
+    liveRoster/{eventId}/{role}   one slot per head, open or assigned
+    profiles/{uid}                crew legal name + handle (shift matching)
+    approvedUsers, pendingApprovals   the same approval gate as everywhere
+
+  Event ids are `{YYYY-MM-DD}__heb{random}` so they still sort by date
+  alongside the CISD season ids, which are bare dates.
+
+  BILLING IS DELIBERATELY ABSENT. The HEB rate card isn't settled yet, so
+  there is no invoicing here — inventing rates would be worse than having
+  none. `scheduledHours` is still recorded on every slot so the billing
+  engine has what it needs whenever the rates land.
+  ============================================================================
+-->
+
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDOf3aLq2gFJSr3ThRgeFLFu-VYc49ihW4",
+    authDomain: "crowley-football.firebaseapp.com",
+    databaseURL: "https://crowley-football-default-rtdb.firebaseio.com",
+    projectId: "crowley-football",
+    storageBucket: "crowley-football.firebasestorage.app",
+    messagingSenderId: "56102489603",
+    appId: "1:56102489603:web:1a81953b6dd0d2fb84c836",
+  };
+  const GOOGLE_CLIENT_ID = "56102489603-cam8dpnm79ktgm32adp5e3djoccd7hdr.apps.googleusercontent.com";
+  const ADMIN_EMAILS = ["dustin12342986@gmail.com", "aracely.valencia10@gmail.com"];
+  const CLIENT_TAG = "HEB";
+</script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<style>
+  :root {
+    --bg:#0A0D12; --panel:#12181F; --panel2:#1A222B; --border:#26313D;
+    --text:#EDEFF3; --text-muted:#8A96A3; --text-faint:#5C6774;
+    --green:#33A870; --amber:#E0A63C; --red:#D65A4E; --blue:#4A8FC0;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap { max-width:680px; margin:0 auto; padding:0 16px 70px; }
+
+  .banner { text-align:center; padding:26px 0 18px; }
+  .banner-name { font-family:Georgia,"Times New Roman",serif; font-size:27px; font-weight:700; margin:0; }
+  .banner-sub { color:var(--text-muted); font-size:12.5px; margin:5px 0 0; }
+  .topbar { display:flex; gap:8px; justify-content:flex-end; padding-top:12px; }
+
+  .tabs { display:flex; gap:6px; overflow-x:auto; padding:4px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; margin-bottom:18px; }
+  .tab-btn {
+    flex:0 0 auto; padding:9px 16px; border-radius:9px; border:none; cursor:pointer;
+    background:transparent; color:var(--text-muted); font-size:13.5px; font-weight:700;
+    font-family:inherit; white-space:nowrap;
+  }
+  .tab-btn.active { background:var(--blue); color:#fff; }
+
+  .link-btn { background:none; border:none; color:var(--blue); font-size:12.5px;
+    cursor:pointer; padding:0; text-decoration:underline; font-family:inherit; }
+  .ghost-btn {
+    background:var(--panel2); border:1px solid var(--border); color:var(--text-muted);
+    border-radius:9px; padding:7px 13px; font-size:12.5px; font-weight:700;
+    cursor:pointer; font-family:inherit;
+  }
+  .primary-btn {
+    width:100%; padding:13px 0; border-radius:12px; font-weight:800; font-size:15px;
+    border:none; cursor:pointer; color:#fff; background:var(--blue); margin-top:6px;
+    font-family:inherit;
+  }
+  .primary-btn:disabled { background:var(--border); color:var(--text-faint); cursor:not-allowed; }
+
+  .auth-card { background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:24px 20px; text-align:center; }
+  .footnote { font-size:11px; color:var(--text-faint); margin-top:10px; font-family:monospace; }
+  .error-msg { background:#2A1512; border:1px solid var(--red); color:#F2B8B1;
+    border-radius:10px; padding:12px 14px; font-size:13px; margin-top:12px; }
+  .save-confirm { background:#12271D; border:1px solid var(--green); color:#7FE0AC;
+    border-radius:12px; padding:12px 14px; margin-top:14px; font-size:13px;
+    font-weight:700; text-align:center; }
+  .section-label { font-size:11.5px; font-weight:800; color:var(--text-faint);
+    text-transform:uppercase; letter-spacing:0.6px; margin:0 0 10px; }
+
+  .field-block { margin-bottom:13px; }
+  .label { font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:5px; }
+  input, select {
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:15px; font-family:inherit;
+  }
+  .row2 { display:flex; gap:10px; }
+  .row2 > * { flex:1; min-width:0; }
+
+  .ev-card { background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:12px 14px; margin-bottom:12px; }
+  .ev-header { font-weight:800; font-size:13.5px; }
+  .ev-meta { font-size:12px; color:var(--text-muted); margin-top:3px; }
+  .chip { display:inline-block; font-size:10px; font-weight:800; padding:2px 7px;
+    border-radius:5px; text-transform:uppercase; letter-spacing:0.4px; margin-left:6px; }
+  .chip-bcast { background:#1B2A38; color:#8FC6F0; border:1px solid var(--blue); }
+  .chip-labor { background:#2A2418; color:#E8C583; border:1px solid var(--amber); }
+
+  .shift-row { display:flex; align-items:center; gap:8px; padding:6px 0;
+    border-top:1px solid var(--border); }
+  .shift-row:first-of-type { border-top:none; }
+  .shift-role { flex:0 0 96px; font-size:12px; color:var(--text-muted); font-weight:700; }
+  .shift-status { flex:1; font-size:13px; font-weight:600; }
+  .shift-status.shift-open { color:var(--amber); }
+  .shift-action { flex:0 0 auto; }
+  .shift-btn { border:none; border-radius:8px; padding:6px 11px; font-size:12px;
+    font-weight:800; cursor:pointer; color:#fff; font-family:inherit; }
+  .shift-btn-pickup { background:var(--green); }
+  .shift-btn-drop { background:var(--red); }
+  .shift-btn-ghost { background:var(--panel2); border:1px solid var(--border);
+    color:var(--text-muted); margin-left:6px; }
+
+  /* Role picker — one row per role with a quantity stepper, since an event
+     can need three stagehands but only one A1. */
+  .role-row { display:flex; align-items:center; gap:8px; padding:7px 0;
+    border-top:1px solid var(--border); }
+  .role-row:first-of-type { border-top:none; }
+  .role-name { flex:1; font-size:13.5px; }
+  .role-row.on .role-name { font-weight:800; color:var(--text); }
+  .role-row .role-name { color:var(--text-muted); }
+  .qty { display:flex; align-items:center; gap:9px; flex:0 0 auto; }
+  .qty-btn { width:30px; height:30px; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:17px; font-weight:800;
+    cursor:pointer; line-height:1; font-family:inherit; }
+  .qty-val { min-width:16px; text-align:center; font-size:14px; font-weight:800;
+    font-variant-numeric:tabular-nums; }
+  .qty-val.zero { color:var(--text-faint); }
+
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:1000;
+    padding:12px; overflow:auto; }
+  .modal-card { background:var(--panel); border:1px solid var(--border); border-radius:16px;
+    padding:18px; max-width:560px; margin:0 auto; }
+  .modal-title { font-size:16px; font-weight:800; margin-bottom:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <button class="ghost-btn" id="signOutBtn" style="display:none;">Log Out</button>
+  </div>
+  <div class="banner">
+    <h1 class="banner-name">HEB ISD</h1>
+    <p class="banner-sub">Hurst-Euless-Bedford ISD · ADV Media</p>
+  </div>
+  <div id="root"><div class="footnote">Loading…</div></div>
+</div>
+
+<script>
+// ============================================================================
+// Roles. HEB covers both sides of the business, so the palette depends on
+// what kind of event is being built.
+// ============================================================================
+const BROADCAST_ROLES = [
+  "EIC", "PM", "Director", "Producer", "Shader", "Clips", "Replay",
+  "Camera 1", "Camera 2", "Camera 3", "Camera 4", "Audio A1", "Audio A2/Utility",
+];
+const EVENT_LABOR_ROLES = [
+  "Stagehand", "Spotlight Operator", "Assist", "Show Assist", "GAV",
+  "Coordinator", "A1", "A2", "L1", "L2", "V1", "V2",
+  "Engineer", "Stage Manager", "GFX", "PowerPoint", "Teleprompter",
+  "ME", "EIC", "PM", "Producer", "Director",
+];
+const EVENT_KINDS = {
+  broadcast: { label: "Broadcast", roles: BROADCAST_ROLES, chip: "chip-bcast" },
+  labor:     { label: "Event Labor", roles: EVENT_LABOR_ROLES, chip: "chip-labor" },
+};
+
+let auth = null, db = null, currentUser = null, gsiInitialized = false;
+let myProfile = {};
+let view = "today";
+let unsubRoster = null;
+
+// ============================================================================
+// Helpers — same behaviour as the CISD and AISD apps so a name that matches
+// there matches here.
+// ============================================================================
+function escapeHtml(str) {
+  return (str == null ? "" : String(str)).replace(/[&<>"']/g, (m) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+function escapeAttr(str) { return escapeHtml(str); }
+function roleKeyOf(role) { return String(role).replace(/[^A-Za-z0-9]/g, "_"); }
+function isAdmin() {
+  return !!(currentUser && currentUser.email &&
+    ADMIN_EMAILS.includes(currentUser.email.toLowerCase()));
+}
+
+// Local calendar date, not UTC. Using toISOString() here would roll the app
+// over to "tomorrow" around 7pm Central — that bug already bit the CISD app.
+function localDateId(d) {
+  const dt = d || new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+function normalizeName(s) {
+  return (s || "").toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+}
+function rosterAliases(rosterName) {
+  const raw = (rosterName || "").trim();
+  if (!raw) return [];
+  const aliases = [];
+  const parenMatch = raw.match(/^(.*?)\s*\((.*?)\)\s*$/);
+  if (parenMatch) {
+    aliases.push(normalizeName(parenMatch[1]));
+    aliases.push(normalizeName(parenMatch[2]));
+  } else {
+    aliases.push(normalizeName(raw));
+  }
+  return aliases.filter(Boolean);
+}
+// Deliberately strict — see the long note in adv-media-teams.html. If two
+// crew share a first name the roster entry needs a last initial.
+function namesMatch(rosterName, legalName, crewHandle) {
+  const aliases = rosterAliases(rosterName);
+  if (!aliases.length) return false;
+  const handle = normalizeName(crewHandle);
+  if (handle && aliases.includes(handle)) return true;
+  const legal = normalizeName(legalName);
+  if (!legal) return false;
+  if (aliases.includes(legal)) return true;
+  const legalParts = legal.split(" ").filter(Boolean);
+  const first = legalParts[0];
+  const last = legalParts.length > 1 ? legalParts[legalParts.length - 1] : "";
+  if (!first) return false;
+  return aliases.some((alias) => {
+    const parts = alias.split(" ").filter(Boolean);
+    if (parts.length === 1) return parts[0] === first;
+    const aFirst = parts[0], aLast = parts[parts.length - 1];
+    if (aFirst !== first || !last) return false;
+    if (aLast === last) return true;
+    if (aLast.length === 1) return last.startsWith(aLast);
+    return false;
+  });
+}
+
+function fmtTime(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = String(hhmm).split(":").map(Number);
+  if (isNaN(h)) return hhmm;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m || 0).padStart(2, "0")} ${ampm}`;
+}
+// Booked hours from call to end. Recorded now so billing has it later.
+function hoursBetween(callTime, endTime) {
+  if (!callTime || !endTime) return null;
+  const [sh, sm] = callTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  if (isNaN(sh) || isNaN(eh)) return null;
+  let hrs = (eh + (em || 0) / 60) - (sh + (sm || 0) / 60);
+  if (hrs < 0) hrs += 24; // ran past midnight
+  return hrs > 0 ? Math.round(hrs * 4) / 4 : null;
+}
+
+// ============================================================================
+// Boot + approval gate — identical to the hub and the other contract apps,
+// so signing in on one carries to all of them.
+// ============================================================================
+function init() {
+  try {
+    if (typeof firebase === "undefined") {
+      document.getElementById("root").innerHTML =
+        `<div class="error-msg">Couldn't load. Check your connection and reload.</div>`;
+      return;
+    }
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    auth = firebase.auth();
+    db = firebase.database();
+  } catch (e) {
+    document.getElementById("root").innerHTML =
+      `<div class="error-msg">Couldn't connect (${escapeHtml(e.message)}).</div>`;
+    return;
+  }
+  document.getElementById("signOutBtn").onclick = () => auth.signOut();
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    document.getElementById("signOutBtn").style.display = user ? "" : "none";
+    if (!user) { renderSignIn(); return; }
+    checkApprovalThenShow(user);
+  });
+}
+
+async function checkApprovalThenShow(user) {
+  document.getElementById("root").innerHTML = `<div class="footnote">Checking your access…</div>`;
+  if (isAdmin()) {
+    try { await db.ref(`approvedUsers/${user.uid}`).set(true); } catch (e) { /* non-fatal */ }
+    await loadProfileThenRender();
+    return;
+  }
+  try {
+    const snap = await db.ref(`approvedUsers/${user.uid}`).once("value");
+    if (snap.val() === true) { await loadProfileThenRender(); return; }
+  } catch (e) { console.error("Approval check failed:", e); }
+  try {
+    await db.ref(`pendingApprovals/${user.uid}`).set({
+      email: user.email || "", displayName: user.displayName || "",
+      requestedAt: new Date().toISOString(),
+    });
+  } catch (e) { console.error("Couldn't register pending approval:", e); }
+  renderPending();
+}
+
+async function loadProfileThenRender() {
+  try {
+    const snap = await db.ref(`profiles/${currentUser.uid}`).once("value");
+    myProfile = snap.val() || {};
+  } catch (e) { myProfile = {}; }
+  renderApp();
+}
+
+function handleGoogleCredential(response) {
+  try {
+    const cred = firebase.auth.GoogleAuthProvider.credential(response.credential);
+    auth.signInWithCredential(cred).catch((e) => {
+      const el = document.getElementById("signInError");
+      if (el) el.innerHTML = `<div class="error-msg">${escapeHtml(e.message || "Couldn't sign in.")}</div>`;
+    });
+  } catch (e) {
+    const el = document.getElementById("signInError");
+    if (el) el.innerHTML = `<div class="error-msg">${escapeHtml(e.message || "Something went wrong.")}</div>`;
+  }
+}
+
+function renderSignIn() {
+  document.getElementById("root").innerHTML = `
+    <div class="auth-card">
+      <p class="footnote" style="margin:0 0 18px;">Sign in to see HEB shifts.</p>
+      <div id="gsiButton" style="display:flex; justify-content:center;"></div>
+      <div id="signInError"></div>
+    </div>`;
+  if (typeof google === "undefined" || !google.accounts || !google.accounts.id) {
+    document.getElementById("signInError").innerHTML =
+      `<div class="error-msg">Google sign-in hasn't loaded yet. Give it a second and reload.</div>`;
+    return;
+  }
+  if (!gsiInitialized) {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential, auto_select: false,
+    });
+    gsiInitialized = true;
+  }
+  google.accounts.id.renderButton(document.getElementById("gsiButton"),
+    { theme: "filled_white", size: "large", text: "signin_with", shape: "pill", width: 260 });
+}
+
+function renderPending() {
+  document.getElementById("root").innerHTML = `
+    <div class="auth-card">
+      <div style="font-size:16px; font-weight:800; margin-bottom:10px;">Waiting on approval</div>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0;">
+        You're signed in as <strong>${escapeHtml(currentUser.email || "")}</strong>, but your
+        account hasn't been approved yet. Dustin or Aracely need to add you to the crew first.
+      </p>
+    </div>`;
+}
+
+// ============================================================================
+// Shell
+// ============================================================================
+function renderApp() {
+  const admin = isAdmin();
+  const tabs = [
+    { id: "today", name: "Today" },
+    { id: "shifts", name: "Shifts" },
+  ];
+  if (admin) tabs.push({ id: "schedule", name: "Schedule" });
+  if (!tabs.some((t) => t.id === view)) view = "today";
+
+  document.getElementById("root").innerHTML = `
+    <div class="tabs">
+      ${tabs.map((t) => `<button class="tab-btn ${view === t.id ? "active" : ""}" data-tab="${t.id}">${t.name}</button>`).join("")}
+    </div>
+    <div id="innerRoot"><div class="footnote">Loading…</div></div>`;
+
+  document.querySelectorAll(".tab-btn").forEach((b) => {
+    b.onclick = () => { view = b.dataset.tab; renderApp(); };
+  });
+
+  // Any listener from the previous tab goes away before the next one opens.
+  if (unsubRoster) { unsubRoster(); unsubRoster = null; }
+
+  if (view === "shifts") renderShifts();
+  else if (view === "schedule") renderSchedule();
+  else renderToday();
+}
+
+// Every HEB event, soonest first. Other contracts' events live in the same
+// clientEvents node, so filter on the client tag.
+async function loadHebEvents() {
+  const snap = await db.ref("clientEvents").once("value");
+  const all = snap.val() || {};
+  return Object.entries(all)
+    .filter(([, ev]) => ev && ev.client === CLIENT_TAG)
+    .map(([id, ev]) => ({ id, ...ev }))
+    .sort((a, b) => String(a.eventDate || a.id).localeCompare(String(b.eventDate || b.id)));
+}
+
+// ============================================================================
+// Today — the event happening today, or tomorrow's if there's nothing today,
+// so crew can see the call before they leave the house.
+// ============================================================================
+async function renderToday() {
+  const inner = document.getElementById("innerRoot");
+  inner.innerHTML = `<div class="footnote">Loading…</div>`;
+
+  let events;
+  try {
+    events = await loadHebEvents();
+  } catch (e) {
+    inner.innerHTML = `<div class="error-msg">Couldn't load events (${escapeHtml(e.message || "unknown error")}).</div>`;
+    return;
+  }
+
+  const todayId = localDateId();
+  const tomorrowId = localDateId(new Date(Date.now() + 86400000));
+  let ev = events.find((x) => x.eventDate === todayId);
+  let isTomorrow = false;
+  if (!ev) {
+    ev = events.find((x) => x.eventDate === tomorrowId);
+    isTomorrow = true;
+  }
+
+  if (!ev) {
+    const next = events.find((x) => x.eventDate >= todayId);
+    inner.innerHTML = `
+      <div class="footnote">No HEB event today or tomorrow.</div>
+      ${next ? `<div class="ev-card" style="margin-top:14px;">
+        <div class="section-label">Next up</div>
+        ${eventHeaderHtml(next)}
+      </div>` : ""}`;
+    return;
+  }
+
+  let roster = null;
+  try {
+    const snap = await db.ref(`liveRoster/${ev.id}`).once("value");
+    roster = snap.val();
+  } catch (e) { console.error("Couldn't read liveRoster:", e); }
+
+  const rows = (ev.roles || []).map((role) => {
+    const entry = (roster || {})[roleKeyOf(role)];
+    const assigned = entry && entry.status === "assigned" && entry.name;
+    return { role, name: assigned ? entry.name : "Open", open: !assigned };
+  });
+  const working = rows.filter((r) => !r.open).length;
+  const open = rows.length - working;
+
+  inner.innerHTML = `
+    <div class="ev-card">
+      ${isTomorrow ? `<div class="section-label" style="margin-bottom:6px;">Tomorrow</div>` : ""}
+      ${eventHeaderHtml(ev)}
+    </div>
+    <div class="footnote" style="margin:14px 0 8px;">
+      ${isTomorrow ? "Working tomorrow" : "Working today"} (${working})${open ? ` · ${open} open` : ""}
+    </div>
+    ${rows.map((r) => `
+      <div class="shift-row">
+        <div class="shift-role">${escapeHtml(r.role)}</div>
+        <div class="shift-status ${r.open ? "shift-open" : ""}">${escapeHtml(r.name)}</div>
+      </div>`).join("")}`;
+}
+
+function eventHeaderHtml(ev) {
+  const kind = EVENT_KINDS[ev.kind] || EVENT_KINDS.labor;
+  const bits = [];
+  if (ev.callTime) bits.push(`Call ${fmtTime(ev.callTime)}`);
+  if (ev.endTime) bits.push(`End ${fmtTime(ev.endTime)}`);
+  if (ev.venue) bits.push(ev.venue);
+  return `
+    <div class="ev-header">
+      ${escapeHtml(ev.day || "")} ${escapeHtml(ev.date || "")} — ${escapeHtml(ev.name || "Event")}
+      <span class="chip ${kind.chip}">${escapeHtml(kind.label)}</span>
+    </div>
+    ${bits.length ? `<div class="ev-meta">${escapeHtml(bits.join(" · "))}</div>` : ""}`;
+}
+
+// ============================================================================
+// Shifts — same board as CISD, filtered to HEB. Live, so two people can't
+// quietly grab the same slot without one of them seeing it flip.
+// ============================================================================
+async function renderShifts() {
+  const inner = document.getElementById("innerRoot");
+  inner.innerHTML = `<div class="footnote">Loading shifts…</div>`;
+
+  if (!myProfile.legalName) {
+    inner.innerHTML = `<div class="footnote">Fill out your Profile in the CISD app first — shifts are matched to your legal name.</div>`;
+    return;
+  }
+
+  let events;
+  try {
+    events = await loadHebEvents();
+  } catch (e) {
+    inner.innerHTML = `<div class="error-msg">Couldn't load events (${escapeHtml(e.message || "unknown error")}).</div>`;
+    return;
+  }
+
+  const ref = db.ref("liveRoster");
+  const cb = (snap) => renderShiftsList(events, snap.val() || {});
+  ref.on("value", cb);
+  unsubRoster = () => ref.off("value", cb);
+}
+
+function renderShiftsList(events, liveRoster) {
+  const inner = document.getElementById("innerRoot");
+  if (!inner) return;
+  const admin = isAdmin();
+  const myName = myProfile.legalName, myHandle = myProfile.crewHandle;
+
+  if (!events.length) {
+    inner.innerHTML = `<div class="footnote">No HEB events scheduled yet.${admin ? " Add one from the Schedule tab." : ""}</div>`;
+    return;
+  }
+
+  inner.innerHTML = `
+    <div class="footnote" style="margin-bottom:12px;">
+      Pick up open shifts, or drop one you can't make. Everyone sees changes live.${admin ? " As an admin you can also assign or remove anyone." : ""}
+    </div>
+    ${events.map((ev) => {
+      const roster = liveRoster[ev.id] || {};
+      return `
+      <div class="ev-card">
+        ${eventHeaderHtml(ev)}
+        <div style="margin-top:8px;">
+        ${(ev.roles || []).map((role) => {
+          const key = roleKeyOf(role);
+          const entry = roster[key] || { role, name: null, status: "open" };
+          const mine = entry.status === "assigned" && namesMatch(entry.name, myName, myHandle);
+          let action = "";
+          if (entry.status !== "assigned" || !entry.name) {
+            action = `<button class="shift-btn shift-btn-pickup" data-act="pickup" data-ev="${escapeAttr(ev.id)}" data-role="${escapeAttr(key)}">Pick Up</button>`;
+            if (admin) action += `<button class="shift-btn shift-btn-ghost" data-act="assign" data-ev="${escapeAttr(ev.id)}" data-role="${escapeAttr(key)}">Assign</button>`;
+          } else if (mine) {
+            action = `<button class="shift-btn shift-btn-drop" data-act="drop" data-ev="${escapeAttr(ev.id)}" data-role="${escapeAttr(key)}">Drop</button>`;
+          } else if (admin) {
+            action = `<button class="shift-btn shift-btn-ghost" data-act="drop" data-ev="${escapeAttr(ev.id)}" data-role="${escapeAttr(key)}">Remove</button>`;
+          }
+          const label = entry.status === "assigned" && entry.name ? entry.name : "Open";
+          return `
+            <div class="shift-row">
+              <div class="shift-role">${escapeHtml(role)}</div>
+              <div class="shift-status ${label === "Open" ? "shift-open" : ""}">${escapeHtml(label)}</div>
+              <div class="shift-action">${action}</div>
+            </div>`;
+        }).join("")}
+        </div>
+      </div>`;
+    }).join("")}`;
+
+  inner.querySelectorAll("[data-act]").forEach((btn) => {
+    btn.onclick = () => onShiftAction(btn.dataset.act, btn.dataset.ev, btn.dataset.role);
+  });
+}
+
+async function onShiftAction(act, eventId, key) {
+  const path = `liveRoster/${eventId}/${key}`;
+  try {
+    const snap = await db.ref(path).once("value");
+    const entry = snap.val();
+    if (!entry) { alert("That shift no longer exists — pull to refresh."); return; }
+
+    if (act === "pickup") {
+      // Re-read first: someone else may have taken it while this list sat open.
+      if (entry.status === "assigned" && entry.name) {
+        alert(`${entry.name} just picked that up.`);
+        return;
+      }
+      await db.ref(path).update({ name: myProfile.legalName, status: "assigned" });
+    } else if (act === "drop") {
+      await db.ref(path).update({ name: null, status: "open" });
+    } else if (act === "assign") {
+      const who = prompt(`Assign ${entry.role} to who?\n\nUse their legal name, or "First L" if two crew share a first name.`);
+      if (who === null) return;
+      const name = who.trim();
+      if (!name) return;
+      await db.ref(path).update({ name, status: "assigned" });
+    }
+  } catch (e) {
+    alert("Couldn't update that shift: " + (e.message || "unknown error"));
+  }
+}
+
+// ============================================================================
+// Schedule (admin) — HEB work is booked by us, not requested by the client,
+// so this is where events get created. Saving writes the event and opens one
+// roster slot per head in the same shape the AISD scheduler produces.
+// ============================================================================
+async function renderSchedule() {
+  const inner = document.getElementById("innerRoot");
+  inner.innerHTML = `<div class="footnote">Loading…</div>`;
+  let events;
+  try {
+    events = await loadHebEvents();
+  } catch (e) {
+    inner.innerHTML = `<div class="error-msg">Couldn't load events (${escapeHtml(e.message || "unknown error")}).</div>`;
+    return;
+  }
+
+  const todayId = localDateId();
+  inner.innerHTML = `
+    <button class="primary-btn" id="newEventBtn" style="margin-bottom:18px;">+ New HEB Event</button>
+    ${events.length ? "" : `<div class="footnote">Nothing scheduled yet.</div>`}
+    ${events.map((ev) => {
+      const past = (ev.eventDate || "") < todayId;
+      const slots = (ev.roles || []).length;
+      return `
+      <div class="ev-card" style="${past ? "opacity:0.55;" : ""}">
+        ${eventHeaderHtml(ev)}
+        <div class="ev-meta">${slots} shift${slots === 1 ? "" : "s"}${ev.scheduledHours ? ` · ${ev.scheduledHours}h booked` : ""}</div>
+        <div style="margin-top:10px;">
+          <button class="ghost-btn" data-del="${escapeAttr(ev.id)}">Delete</button>
+        </div>
+      </div>`;
+    }).join("")}`;
+
+  document.getElementById("newEventBtn").onclick = () => openEventForm();
+  inner.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = () => deleteEvent(b.dataset.del);
+  });
+}
+
+async function deleteEvent(eventId) {
+  const snap = await db.ref(`liveRoster/${eventId}`).once("value");
+  const roster = snap.val() || {};
+  const taken = Object.values(roster).filter((e) => e && e.status === "assigned" && e.name);
+  const warn = taken.length
+    ? `\n\n${taken.length} shift${taken.length === 1 ? " is" : "s are"} already picked up. Deleting removes ${taken.length === 1 ? "it" : "them"} from the board — tell the crew yourself, this doesn't notify anyone.`
+    : "";
+  if (!confirm(`Delete this event?${warn}`)) return;
+  try {
+    await db.ref().update({
+      [`clientEvents/${eventId}`]: null,
+      [`liveRoster/${eventId}`]: null,
+    });
+    renderSchedule();
+  } catch (e) {
+    alert("Couldn't delete that: " + (e.message || "unknown error"));
+  }
+}
+
+function openEventForm() {
+  const quantities = {}; // role -> count
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-title">New HEB Event</div>
+
+      <div class="field-block">
+        <div class="label">Event Name</div>
+        <input id="evName" placeholder="e.g. Bell HS vs Trinity, or Board Meeting" />
+      </div>
+      <div class="field-block">
+        <div class="label">Type</div>
+        <select id="evKind">
+          <option value="broadcast">Broadcast</option>
+          <option value="labor">Event Labor</option>
+        </select>
+      </div>
+      <div class="field-block">
+        <div class="label">Date</div>
+        <input id="evDate" type="date" />
+      </div>
+      <div class="row2">
+        <div class="field-block">
+          <div class="label">Call Time</div>
+          <input id="evCall" type="time" />
+        </div>
+        <div class="field-block">
+          <div class="label">End Time</div>
+          <input id="evEnd" type="time" />
+        </div>
+      </div>
+      <div class="field-block">
+        <div class="label">Venue</div>
+        <input id="evVenue" placeholder="Pennington Field, Buinger CTE, …" />
+      </div>
+
+      <div class="section-label" style="margin-top:18px;">Positions</div>
+      <div class="footnote" style="margin:0 0 8px;">Set a count for each position you need. Three stagehands becomes Stagehand 1, 2, and 3 on the board.</div>
+      <div id="roleList"></div>
+
+      <div id="evMsg"></div>
+      <button class="primary-btn" id="evSaveBtn">Create Event</button>
+      <button class="ghost-btn" id="evCancelBtn" style="width:100%; margin-top:10px; padding:11px 0;">Cancel</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.body.style.overflow = "hidden";
+
+  function close() {
+    overlay.remove();
+    document.body.style.overflow = "";
+  }
+
+  function paintRoles() {
+    const kind = EVENT_KINDS[overlay.querySelector("#evKind").value];
+    const list = overlay.querySelector("#roleList");
+    list.innerHTML = kind.roles.map((role) => {
+      const n = quantities[role] || 0;
+      return `
+        <div class="role-row ${n ? "on" : ""}" data-role="${escapeAttr(role)}">
+          <div class="role-name">${escapeHtml(role)}</div>
+          <div class="qty">
+            <button class="qty-btn" data-step="-1" data-role="${escapeAttr(role)}">−</button>
+            <span class="qty-val ${n ? "" : "zero"}">${n}</span>
+            <button class="qty-btn" data-step="1" data-role="${escapeAttr(role)}">+</button>
+          </div>
+        </div>`;
+    }).join("");
+    list.querySelectorAll(".qty-btn").forEach((b) => {
+      b.onclick = () => {
+        const role = b.dataset.role;
+        const next = (quantities[role] || 0) + Number(b.dataset.step);
+        quantities[role] = Math.max(0, Math.min(20, next));
+        paintRoles();
+      };
+    });
+  }
+
+  // Switching type swaps the palette. Counts for roles that exist on both
+  // sides (Director, Producer, EIC, PM) carry over; the rest just stop
+  // showing, and get filtered out on save.
+  overlay.querySelector("#evKind").onchange = paintRoles;
+  paintRoles();
+
+  overlay.querySelector("#evCancelBtn").onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+  overlay.querySelector("#evSaveBtn").onclick = async () => {
+    const msg = overlay.querySelector("#evMsg");
+    const btn = overlay.querySelector("#evSaveBtn");
+    const name = overlay.querySelector("#evName").value.trim();
+    const kindId = overlay.querySelector("#evKind").value;
+    const kind = EVENT_KINDS[kindId];
+    const eventDate = overlay.querySelector("#evDate").value;
+    const callTime = overlay.querySelector("#evCall").value;
+    const endTime = overlay.querySelector("#evEnd").value;
+    const venue = overlay.querySelector("#evVenue").value.trim();
+
+    if (!name) { msg.innerHTML = `<div class="error-msg">Give the event a name.</div>`; return; }
+    if (!eventDate) { msg.innerHTML = `<div class="error-msg">Pick a date.</div>`; return; }
+
+    // Only count roles that belong to the type actually selected.
+    const roles = [];
+    const billingRoles = {};
+    kind.roles.forEach((role) => {
+      const n = quantities[role] || 0;
+      for (let i = 1; i <= n; i++) {
+        const display = n > 1 ? `${role} ${i}` : role;
+        roles.push(display);
+        billingRoles[roleKeyOf(display)] = role;
+      }
+    });
+    if (!roles.length) { msg.innerHTML = `<div class="error-msg">Add at least one position.</div>`; return; }
+
+    btn.disabled = true;
+    const dt = new Date(eventDate + "T12:00:00");
+    const scheduledHours = hoursBetween(callTime, endTime);
+    const eventId = `${eventDate}__heb${Math.random().toString(36).slice(2, 8)}`;
+
+    const updates = {};
+    updates[`clientEvents/${eventId}`] = {
+      name, client: CLIENT_TAG, kind: kindId, venue,
+      date: `${dt.getMonth() + 1}/${dt.getDate()}`,
+      day: dt.toLocaleDateString([], { weekday: "short" }),
+      eventDate, callTime, endTime,
+      scheduledHours: scheduledHours || null,
+      roles, billingRoles,
+      createdBy: currentUser.email || "",
+      createdAt: new Date().toISOString(),
+    };
+    roles.forEach((role) => {
+      updates[`liveRoster/${eventId}/${roleKeyOf(role)}`] = {
+        role, name: null, status: "open",
+        billingRole: billingRoles[roleKeyOf(role)] || role,
+        scheduledHours: scheduledHours || null,
+      };
+    });
+
+    try {
+      await db.ref().update(updates);
+      close();
+      renderSchedule();
+    } catch (e) {
+      btn.disabled = false;
+      msg.innerHTML = `<div class="error-msg">Couldn't save (${escapeHtml(e.message || "unknown error")}).</div>`;
+    }
+  };
+}
+
+init();
+</script>
+</body>
+</html>
