@@ -175,6 +175,21 @@
 
   function poolSize() { return pool.length; }
 
+  /* Emptying it is a test, not a repair.
+
+     The pool never forgets, so a passage that crossed once stays available
+     for the rest of the session. If the same track then crosses to the same
+     passage again, that may be the algorithm re-finding it \u2014 or simply the
+     old passage still sitting there. Clearing lets those be told apart. */
+  function clearPool() {
+    const had = pool.length;
+    pool = [];
+    poolSeen = Object.create(null);
+    encoded = Object.create(null);
+    cache = Object.create(null);
+    return had;
+  }
+
   async function pull(form, want) {
     const url = API
       + "?action=query&format=json&origin=*"
@@ -421,6 +436,7 @@
     find: find,
     wide: wide,
     poolSize: poolSize,
+    clearPool: clearPool,
     CONCURRENCY: CONCURRENCY,
     POOL_MAX: POOL_MAX,
     pull: pull,

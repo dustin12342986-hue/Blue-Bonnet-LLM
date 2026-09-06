@@ -121,6 +121,12 @@
     background: var(--panel2); color: var(--muted); cursor: pointer; display: flex; align-items: center;
     justify-content: center; flex-shrink: 0; }
   #voiceSettingsBtn:hover { color: var(--text); }
+  .bb-epigraph { margin: 26px auto 0; max-width: 30rem; padding-top: 18px;
+    border-top: 1px solid var(--border); opacity: .62; }
+  .bb-epigraph .q { display: block; font-style: italic; font-size: 14px;
+    line-height: 1.6; }
+  .bb-epigraph .a { display: block; margin-top: 8px; font-size: 12px;
+    letter-spacing: .02em; }
   #listenPanel,
   #dreamsPanel { display: none; position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.6);
     align-items: center; justify-content: center; padding: 20px; }
@@ -246,6 +252,9 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="bb-artist-lens.js"></script>
 <script src="bb-audio-lens.js"></script>
+<script src="bb-vision.js"></script>
+<script src="bb-gallery.js"></script>
+<script src="bb-texts.js"></script>
 <script src="bb-music.js"></script>
 </head>
 <body>
@@ -276,11 +285,19 @@
   <div id="listenPanel">
     <div class="voice-card">
       <h2>Play it something</h2>
-      <p class="sub">It measures what it hears \u2014 brightness, thickness, roughness,
-        tension \u2014 and looks for someone who wrote about that same texture. Your own
+      <p class="sub">It measures what it hears — brightness, thickness, roughness,
+        tension — and looks for someone who wrote about that same texture. Your own
         recordings work, and so does anything public domain (musopen.org and imslp.org
         both have a lot). Nothing is uploaded; the analysis happens here.</p>
       <input id="listenFile" type="file" accept="audio/*" style="margin:10px 0" />
+      <div style="margin:6px 0 10px">
+        <button id="listenTabBtn" class="more-btn">Listen to another tab</button>
+        <span class="sub" style="font-size:11px;margin-left:8px">YouTube, streaming, anything playing</span>
+      </div>
+      <div style="margin:6px 0 10px">
+        <button id="listenRoomBtn" class="more-btn">Listen through the mic</button>
+        <span class="sub" style="font-size:11px;margin-left:8px">for phones, or a record in the room</span>
+      </div>
       <audio id="listenAudio" controls style="width:100%;margin:6px 0"></audio>
       <p id="listenMeasure" class="sub" style="font-family:ui-monospace,Menlo,monospace;font-size:11px"></p>
       <div id="listenResult"></div>
@@ -363,6 +380,15 @@
       <h2>Hi, I'm Blue Bonnet.</h2>
       <p>Built for how ADHD, dyslexic, and autistic minds actually work — not a generic assistant. Ask me anything, especially the stuff that's hard to get organized or started on.</p>
       <div id="chips"></div>
+      <!-- Michelangelo's account of sculpture, and of this: the figure is
+           already in the block, and the hand removes what is superfluous
+           to reach it. Nothing is added. Rime 151, c. 1540. -->
+      <blockquote class="bb-epigraph">
+        <span class="q">The finest artist has no conception that a single block of
+          marble does not already hold inside itself, beneath its excess; and only
+          the hand that obeys the intellect reaches it.</span>
+        <span class="a">Michelangelo, <i>Rime</i> 151, c. 1540</span>
+      </blockquote>
     </div>
   </div>
 
@@ -1203,8 +1229,13 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-24-music";
+  const BUILD = "2026-08-26-retest";
   try { window.__bbBuild = BUILD; } catch (e) {}
+  // bb-texts encodes live passages with the app's own encoder, so a live
+  // passage is scored on exactly the same terms as a curated one.
+  try { window.__bbSensoryOf = (t) => sensoryOf(t); } catch (e) {}
+  // A live passage should carry its own charge, read from its own words.
+  try { window.__bbAffectOf = (t) => affectOf(t); } catch (e) {}
 
   // A hand-typed stamp can go stale — it did, on 22 Aug, when an edit
   // targeted the previous value and silently didn't match, so the string
@@ -1341,7 +1372,10 @@ BOUNDARIES
   // ============================================================
   const SENSE_LEX = {
     sight: ("saw see seeing watched watching looked looking stared glimpse dark darkness bright light " +
-      "lit dim shadow glow flash colour color blurry clear visible invisible").split(" "),
+      "lit dim shadow glow flash colour color blurry clear visible invisible "
+      + "blue green yellow red violet purple orange pink white black grey gray brown "
+      + "gold silver amber crimson scarlet azure indigo turquoise beige cream "
+      + "sky stars star sun moon night day dawn dusk sunset sunrise light").split(" "),
     sound: ("heard hear hearing sound noise loud quiet silence silent muffled echo ringing buzzing " +
       "humming music song singing shouting yelling whisper whispered voice footsteps").split(" "),
     touch: ("cold freezing chill warm hot burning heat damp wet dry rough smooth soft hard heavy light " +
@@ -2150,6 +2184,319 @@ BOUNDARIES
       .map((r) => ({ item: byId[r.label], sim: r.sim }))
       .filter((r) => r.item);
   }
+  /* ============================================================
+     A THING YOU PLAYED IS A MOMENT YOU HAD
+
+     Listening measured a piece and then threw the measurement away. But
+     putting something on is an episode: you were there, it had texture,
+     it had a feeling. Storing it means the pairing engine can cross a
+     piece you played in March with something you said in June \u2014 sensory
+     input arriving as measurement, entering the crossing on the same
+     footing as words.
+
+     Only on a deliberate play. The file was chosen, the panel was open;
+     that is an act, not background noise. And only when qualities
+     actually HELD across the piece \u2014 a few frames of nothing is not a
+     memory of anything.
+     ============================================================ */
+
+  /* ============================================================
+     THE CHAIN HAS TO COMPLETE.
+
+       harmonic on both ends
+         \u2192 a sensory input leads to
+           \u2192 emotions and connection
+             \u2192 which create MEMORY
+
+     The lens was doing the first step and stopping. A texture crossed, a
+     passage appeared on screen, and then it evaporated \u2014 nothing produced,
+     nothing kept. That is a bridge with nothing on the far side of it.
+
+     A crossing IS an event. Two ends, a carrier between them, and the
+     feeling and the connection are what come out. So it is written into
+     memory like any other moment, and it can be paired, dreamt on, and
+     returned to later.
+
+     What is stored is the crossing itself, not the passage. The passage is
+     one end of it.
+     ============================================================ */
+
+  /* The memory completes when the person says what the join was. Until
+     then it is a bridge that has been built and not yet walked across. */
+  /* Something arrived in the space. Whatever it was \u2014 the dream produced
+     it, or the person said it \u2014 THAT is the memory. It is stored as it
+     came, not summarised, because the whole thing was about not
+     substituting a description for the thing. */
+  function crossingBecame(id, insight, from) {
+    const ep = (memory.episodes || []).filter(function (e) { return e.id === id; })[0];
+    if (!ep || !ep.crossing) return null;
+    const text = String(insight || "").trim();
+    if (!text) return null;
+    ep.insight = text;
+    ep.insightFrom = from || "unknown";     // "dream" or "person"
+    ep.becameSomething = true;
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbCrossingBecame = (i, t, f) => crossingBecame(i, t, f); } catch (e) {}
+
+  function completeCrossing(id, said) {
+    const ep = (memory.episodes || []).filter(function (e) { return e.id === id; })[0];
+    if (!ep || !ep.crossing) return null;
+    const text = String(said || "").trim();
+    if (!text) return null;
+    /* What they say is added, never substituted. The crossing's own
+       emotion was computed when it happened; their account sits beside it
+       as another fact, not as a correction of the arithmetic. */
+    ep.crossing.said = text;
+    ep.crossing.saidAffect = affectOf(text);
+    ep.said = true;
+    ep.turns.push({ role: "user", text: text });
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbCompleteCrossing = (i, t) => completeCrossing(i, t); } catch (e) {}
+
+  /* THE TWO ARMS, COMPUTED.
+
+     Emotion and connection are not assigned by the app and not asked of
+     the person. They fall out of the two ends meeting. Same inputs, same
+     result, whoever runs it.
+
+     EMOTION is the resultant of the two charges. Not either one, and not
+     their average pretending to be a feeling \u2014 what a crossing produces is
+     MOVEMENT, so the shift is what is recorded alongside the resultant.
+     Someone at \u22120.8 meeting a passage at +0.5 has moved 1.3, and that
+     movement is the thing that happened.
+
+     CONNECTION is the feeling between the two things: what carried, how
+     far apart the ends were, and whether the subject changed. It is a
+     description of the join, not an interpretation of it. */
+
+  function crossingEmotion(a, b) {
+    if (!a && !b) return null;
+    const x = a || { valence: 0, arousal: 0 };
+    const y = b || { valence: 0, arousal: 0 };
+    return {
+      // where it lands
+      valence: Math.round(((x.valence + y.valence) / 2) * 1000) / 1000,
+      arousal: Math.round(((x.arousal + y.arousal) / 2) * 1000) / 1000,
+      // and how far it travelled to get there
+      shift: Math.round((y.valence - x.valence) * 1000) / 1000,
+      lift: Math.round((y.arousal - x.arousal) * 1000) / 1000,
+    };
+  }
+
+  function crossingConnection(carrier, a, b, opts) {
+    opts = opts || {};
+    const x = a || { valence: 0, arousal: 0 };
+    const y = b || { valence: 0, arousal: 0 };
+    const dist = Math.round(Math.sqrt(
+      Math.pow(y.valence - x.valence, 2) + Math.pow(y.arousal - x.arousal, 2)) * 1000) / 1000;
+    return {
+      carried: (carrier || []).slice(),
+      distance: dist,                       // how far apart the ends were
+      crossedSubject: opts.sameSubject === false,
+      measured: !!opts.measured,
+    };
+  }
+
+  /* ============================================================
+     THE CONNECTION IS PRODUCED, NOT COMPUTED.
+
+     crossingConnection returns a distance and a carrier \u2014 arithmetic on
+     what both ends already had. Nothing is made. Two events arrive with
+     their charges and it averages them.
+
+     But a crossing is supposed to CREATE something: two unrelated events,
+     sensory input passing between them, and connection and emotion coming
+     into being where they meet. Averaging two numbers is not that.
+
+     And the material for it is already here. The artists wrote down what
+     they meant. That is the entire reason the corpus holds their own words
+     instead of descriptions of them \u2014 and the crossing path was scoring
+     the texture and throwing the account away.
+
+     So the connection is generated from BOTH ends in their own words, and
+     it is asked for as a question rather than a verdict, because the same
+     rule holds here as everywhere: it must not tell the person what the
+     join means. It offers the join. They see it.
+     ============================================================ */
+
+  async function generateConnection(ep) {
+    if (!ep || !ep.crossing) return null;
+    const c = ep.crossing;
+    const mineText = (ep.turns && ep.turns[0] && ep.turns[0].text) || "";
+    const theirText = (c.theirs && c.theirs.text) || "";
+    if (!mineText || !theirText) return null;
+
+    const prompt =
+      "Two unrelated things met.\n\n"
+      + "ONE: " + mineText.slice(0, 400) + "\n\n"
+      + "THE OTHER: \u201c" + theirText.slice(0, 400) + "\u201d"
+      + ((c.theirs && c.theirs.source) ? "\n\u2014 " + c.theirs.source : "")
+      + "\n\nWhat carried between them: " + ((c.carrier || []).join(", ") || "texture")
+      + ".\n\nThese are about different things and that is the point. Do NOT "
+      + "explain what the connection means, do NOT tell them what to feel, and "
+      + "do NOT summarise either side back to them. Write ONE short question "
+      + "that holds the two together and hands the looking to them. If nothing "
+      + "real is there, reply with exactly: {}";
+
+    try {
+      const out = await dreamCall(
+        "You hold two unrelated things together and ask one question about "
+        + "the join. You never say what it means.", prompt);
+      const t = String(out || "").trim();
+      if (!t || t === "{}" || t.length < 8) return null;
+      c.connection = Object.assign({}, c.connection || {}, { question: t });
+      ep.becameSomething = true;
+      ep.insight = t;
+      ep.insightFrom = "crossing";
+      saveMemory();
+      return t;
+    } catch (e) { return null; }
+  }
+  try { window.__bbGenerateConnection = (e) => generateConnection(e); } catch (e) {}
+
+  /* THE SAME PASSAGE CANNOT KEEP WINNING.
+
+     A texture barely changes between passes, so once a passage clears the
+     floor it clears it again a few seconds later, and again \u2014 the journal
+     fills with one quote repeated. That is not a crossing happening many
+     times; it is one crossing recorded many times.
+
+     Once recorded, a passage is set aside for a while. If it is genuinely
+     the right answer it will come back after something else has had a
+     turn. */
+  const CROSSED_RECENTLY_MS = 20 * 60 * 1000;
+  let recentlyCrossed = Object.create(null);
+
+  function alreadyCrossed(theirs) {
+    const key = String((theirs && theirs.text) || "").slice(0, 120);
+    if (!key) return false;
+    const when = recentlyCrossed[key];
+    return !!when && (Date.now() - when) < CROSSED_RECENTLY_MS;
+  }
+
+  function recordCrossing(mine, theirs, carrier, opts) {
+    if (alreadyCrossed(theirs)) return null;
+    /* An empty carrier used to mean no crossing. It now means the purest
+       kind: the axes carried and no word came along with them. Every scan
+       crossing was being silently dropped by this guard \u2014 counted, never
+       stored. What must exist is the other end, not a shared word. */
+    if (!theirs) return null;
+    carrier = (carrier && carrier.length) ? carrier
+      : ((opts && opts.axes) || []);
+    opts = opts || {};
+    const ep = {
+      id: "cr" + Date.now().toString(36),
+      at: Date.now(),
+      kind: "crossing",
+      // Written as the person's own line: this happened to them.
+      turns: [{ role: "user", text:
+        "Something I " + (opts.verb || "took in")
+        + (opts.heardIn ? " \u2014 " + opts.heardIn + " \u2014" : "") + " crossed with "
+        + (theirs.artist || theirs.source || "something written")
+        + " on " + carrier.join(", ") + ". Their words: \u201c"
+        + String(theirs.text || "").slice(0, 300) + "\u201d" }],
+      crossing: {
+        // the two ends
+        mine: { modes: (mine && mine.modes) || {}, measured: !!opts.measured },
+        theirs: { source: theirs.source || theirs.artist || null,
+                  cite: theirs.cite || null,
+                  text: String(theirs.text || "").slice(0, 600),
+                  verified: theirs.verified !== false },
+        // the carrier between them
+        carrier: carrier.slice(),
+        // Both ends' charges, as facts about each end.
+        mineCharge: (mine && mine.aff) || (opts.mineAff || null),
+        // What was playing. Without it a crossing cannot be checked.
+        heardIn: opts.heardIn || null,
+        theirCharge: theirs.aff || null,
+        // The two arms, COMPUTED. Neither end supplies them and neither
+        // does anyone else \u2014 they are the result of the chain running.
+        emotion: crossingEmotion((mine && mine.aff) || opts.mineAff, theirs.aff),
+        connection: crossingConnection(carrier, (mine && mine.aff) || opts.mineAff,
+                                       theirs.aff, opts),
+        // Did anyone ask for this? The whole experiment turns on the answer.
+        autonomous: !!opts.autonomous,
+        bothOwn: !!opts.own,
+      },
+      sensory: { modes: Object.assign({}, (mine && mine.modes) || {}),
+                 count: carrier.length, measured: !!opts.measured },
+      /* EMOTION IS NOT MINE TO ASSIGN.
+
+         Two arms meet to make a memory: CONNECTION is the feeling between
+         the two things, and EMOTION is what finds that connection. Neither
+         is the passage's affect and neither is the mood the person arrived
+         in. The emotion is what rises when THEY see the join.
+
+         Copying the passage's valence in here filled that space with a
+         number nobody felt. So it is left open. The crossing is recorded
+         incomplete, and it completes when the person says what it was \u2014
+         the same reason this app never tells anyone what they feel. */
+      /* ==================================================
+         WHAT IS AT THE CENTRE.
+
+         Not a number. The centre of a crossing is the RECOGNITION \u2014 the
+         thing that arises when two ends are held together. The aha. The
+         creation. It cannot be computed, because if it could be computed
+         it would not be one.
+
+         Arithmetic was sitting in that place: a valence pair called
+         "emotion", as though the result of a crossing were texture
+         measured against shade. It is not. Those numbers describe the
+         ARMS \u2014 how far the ends were apart, which way it travelled \u2014 and
+         they belong there and nowhere else.
+
+         So the centre starts EMPTY. A crossing is two ends and a carrier
+         and a space. It becomes a memory when something arrives in that
+         space, and until then it is a pairing that has not become
+         anything, which is the honest majority.
+         ================================================== */
+      insight: null,
+      becameSomething: false,
+      // arithmetic about the arms, kept out of the centre
+      affect: crossingEmotion((mine && mine.aff) || opts.mineAff, theirs.aff),
+    };
+    memory.episodes = memory.episodes || [];
+    memory.episodes.push(ep);
+    try {
+      recentlyCrossed[String((theirs && theirs.text) || "").slice(0, 120)] = Date.now();
+    } catch (e) {}
+    pruneEpisodes();
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbRecordCrossing = (a, b, c, o) => recordCrossing(a, b, c, o); } catch (e) {}
+
+  function recordListenEpisode(title, qualities) {
+    if (!qualities || !qualities.length) return null;
+    const name = String(title || "something").slice(0, 120);
+    // Written as the person's own line, because that is what it is: they
+    // put this on. The reflection rules can then treat it like anything
+    // else they said.
+    const text = "I played " + name + ".";
+    const ep = {
+      id: "ep" + Date.now().toString(36),
+      at: Date.now(),
+      kind: "listened",
+      turns: [{ role: "user", text: text }],
+      affect: affectOf(text),
+      // The texture is MEASURED, not read off the title. Marked so it can
+      // be told apart from a word someone wrote.
+      sensory: { modes: { sound: qualities.slice() },
+                 count: qualities.length, measured: true },
+      played: { title: name, qualities: qualities.slice() },
+    };
+    memory.episodes = memory.episodes || [];
+    memory.episodes.push(ep);
+    pruneEpisodes();
+    saveMemory();
+    return ep;
+  }
+  try { window.__bbRecordListen = (t, q) => recordListenEpisode(t, q); } catch (e) {}
+
   function recordEpisode(turns) {
     if (!turns || !turns.length) return;
     memory.episodes = memory.episodes || [];
@@ -3902,7 +4249,8 @@ Rules:
     const know = relevantKnowledge(queryText, recent);
     const mem = buildMemoryContext(queryText);
     markAsked(queryText || "");
-    const volatile = (know + (mem || "") + artistAside(queryText)).trim();
+    startGalleryPick(queryText);
+    const volatile = (know + (mem || "") + artistAside(queryText) + galleryAside()).trim();
     if (volatile) blocks.push({ type: "text", text: volatile });
     return blocks;
   }
@@ -3924,14 +4272,366 @@ Rules:
      the failure mode here, so the note says so explicitly.
      ============================================================ */
 
+  /* ============================================================
+     ASKING FOR A PAINTING
+
+     The corpus can only name a canvas that was attached to a passage by
+     hand \u2014 one verified so far. So "show me a painting" almost always
+     fell through to the model, ungrounded.
+
+     The gallery is the other way: measure real public-domain canvases and
+     let the texture pick one. That is retrieval, and it is anti-similar by
+     construction \u2014 a painting carries only measurements here, no subject,
+     so nothing can match on what it depicts.
+
+     Measuring costs a network round trip per canvas, so it is only started
+     when someone actually asks to see something. The result arrives after
+     the reply and is offered on the next turn rather than blocking this
+     one \u2014 a pause of several seconds in the middle of a conversation would
+     cost more than the picture is worth.
+     ============================================================ */
+
+  let galleryPick = null;          // last painting the texture chose
+  let galleryBusy = false;
+
+  function wantsToSee(text) {
+    return /\b(paint|painting|picture|art|artwork|canvas|show me something|see something)\b/i
+      .test(String(text || ""));
+  }
+
+  function startGalleryPick(queryText) {
+    if (galleryBusy || typeof BBGallery === "undefined") return;
+    if (!wantsToSee(queryText)) return;
+    galleryBusy = true;
+    let sig, aff;
+    /* THE TEXTURE IS IN WHAT THEY WERE SAYING, NOT IN THE REQUEST.
+       "show me a painting" was being encoded and matched, and it carries no
+       texture at all \u2014 see and painting are not qualities \u2014 so nothing could
+       ever cross and the pick was null every time. Read the recent
+       conversation instead and strip the ask-words out of it. */
+    try {
+      const recent = messages.slice(-6)
+        .filter((m) => m.role === "user")
+        .map((m) => (typeof m.content === "string" ? m.content : ""))
+        .join(" ");
+      // The request itself is stripped of its ask-words; what is left is
+      // whatever they were actually describing.
+      const source = (recent + " " + String(queryText))
+        .replace(/\b(show|see|give|find|play|me|a|an|some|something|paint|painting|picture|art|artwork|canvas)\b/gi, " ");
+      sig = sensoryOf(source);
+      aff = affectOf(recent || String(queryText));
+    } catch (e) { galleryBusy = false; return; }
+    // Five was too few for a positional threshold: "the darkest of these"
+    // picked a bright yellow canvas because the set had nothing darker.
+    // Twenty gives the position something real to sit against.
+    BBGallery.pickFor(sig, aff, gallerySearchFor(queryText), { n: 20 })
+      .then((r) => { galleryPick = r || null;
+        if (r) { noteSupplied(r.painting.url, null);
+                 noteSupplied(r.painting.page, null);
+                 suppliedTexture = (r.shared || []).map(function (x) { return String(x).toLowerCase(); });
+                 paintingShown = true;
+                 showPainting(r);
+                 try {
+                   recordCrossing(sig, { source: r.painting.title,
+                     artist: r.painting.painter, text: r.painting.title,
+                     cite: r.painting.page || r.painting.url, verified: true,
+                     aff: null }, r.shared, { measured: true, verb: "was describing" });
+                 } catch (e) {} } })
+      .catch(() => { galleryPick = null; })
+      .then(() => { galleryBusy = false; });
+  }
+
+  /* Warm the gallery once, quietly, a while after load. Measuring is a
+     network round trip per canvas; doing it for the first time when
+     someone asks means the answer arrives two turns late. */
+  let galleryWarmed = false;
+  function warmGallery() {
+    if (galleryWarmed || typeof BBGallery === "undefined") return;
+    galleryWarmed = true;
+    try { BBGallery.measureAll("oil painting landscape portrait 19th century", 20).catch(() => {}); } catch (e) {}
+  }
+  setTimeout(warmGallery, 12000);
+  // The scanner runs for as long as the app is open.
+  // A calibration is only worth having if it survives a reload.
+  try {
+    if (memory.calibration && memory.calibration.floor && BBLens.setFloor) {
+      BBLens.setFloor(memory.calibration.floor);
+    }
+  } catch (e) {}
+  setTimeout(function () { try { startScanning(); } catch (e) {} }, 8000);
+
+  /* SHOW IT DIRECTLY.
+
+     The painting was being handed to the model as an instruction, and the
+     model kept naming something else with a link it invented. An
+     instruction is a request; five rounds of patching the request did not
+     make it a mechanism.
+
+     So the pick renders itself. No prompt to ignore, no timing to miss, no
+     link to invent \u2014 the image that was measured is the image that
+     appears. The model can still talk about it; it just cannot replace it.
+  */
+  function showPainting(pick) {
+    try {
+      const g = pick.painting;
+      if (!g || !g.url) return;
+      const row = document.createElement("div");
+      row.className = "row assistant";
+      const b = document.createElement("div");
+      b.className = "bubble";
+
+      const img = document.createElement("img");
+      img.src = g.url;
+      img.alt = g.title;
+      img.loading = "lazy";
+      img.style.cssText = "width:100%;border-radius:8px;display:block";
+      b.appendChild(img);
+
+      const cap = document.createElement("div");
+      cap.style.cssText = "font-size:12px;opacity:.7;margin-top:8px";
+      cap.textContent = g.title + " \u2014 " + g.painter
+        + "  \u00b7  shares: " + (pick.shared || []).join(", ");
+      b.appendChild(cap);
+
+      const src = document.createElement("a");
+      src.href = g.page || g.url;
+      src.target = "_blank";
+      src.rel = "noopener";
+      src.textContent = "public domain, via Wikimedia Commons";
+      src.style.cssText = "font-size:11px;opacity:.55;display:block;margin-top:4px";
+      b.appendChild(src);
+
+      row.appendChild(b);
+      bodyEl.appendChild(row);
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    } catch (e) {}
+  }
+
+  /* ============================================================
+     AUDITING THE REPLY
+
+     An instruction is a request. "Never invent a link" was written into
+     the prompt five separate times today and ignored every time \u2014 not
+     because the wording was weak, but because a model producing fluent
+     text produces the fluent thing. Rewriting the request never turns it
+     into a constraint.
+
+     So this checks the output instead. Anything the model asserts that
+     the system did not supply is removed before it reaches the person.
+     It cannot be stopped from saying things; it can be stopped from
+     saying them TO YOU.
+
+     Deliberately narrow. It strips claims that can be checked against
+     what was actually handed over \u2014 links, and quotes attributed to the
+     corpus. It does not touch the model's own words about the person,
+     because those are the thing the whole app exists to produce.
+     ============================================================ */
+
+  let suppliedUrls = [];       // every URL the system put in the prompt
+  let suppliedQuotes = [];     // every corpus passage it was given
+  let suppliedTexture = [];    // the qualities it was actually told
+  let paintingShown = false;   // whether an image is on screen it cannot see
+
+  function noteSupplied(url, quote) {
+    if (url) suppliedUrls.push(String(url));
+    if (quote) suppliedQuotes.push(String(quote));
+  }
+  function clearSupplied() {
+    suppliedUrls = []; suppliedQuotes = []; suppliedTexture = []; paintingShown = false;
+  }
+
+  // Always supplied, in every prompt. Stripping a crisis link would be
+  // the worst possible false positive, so they are registered up front.
+  const ALWAYS_SUPPLIED = [
+    "https://988lifeline.org/chat", "https://findahelpline.com",
+    "988lifeline.org", "findahelpline.com",
+  ];
+
+  /* ctx is optional and exists so this can be tested without reaching into
+     a closure. Live calls pass nothing and use what was actually supplied. */
+  /* WHAT THE REPLY CLAIMED, KEPT SO IT CAN BE CHECKED.
+
+     Same fix as the painting: do not ask the model to be accurate, state
+     the fact yourself. It suggested a piece and said it carried "thick,
+     veiled, rough"; the measurement came back thin, soft, low. Opposite on
+     both checkable axes. It had chosen on reputation and written texture
+     words over the top.
+
+     So the claim is captured when it is made, and when something is
+     actually listened to, the two are put side by side by the app. The
+     model does not get to narrate whether it was right. */
+  let lastClaim = null;          // { qualities, at }
+
+  function captureClaim(text) {
+    if (typeof BBLens === "undefined" || typeof text !== "string") return;
+    const vocab = Object.keys(BBLens.QUALITIES || {});
+    const low = text.toLowerCase();
+    const found = vocab.filter(function (q) {
+      return new RegExp("\\b" + q + "(?:ly|ness|er|est|y|ed|s)?\\b").test(low);
+    });
+    if (found.length) lastClaim = { qualities: found, at: Date.now() };
+  }
+  try { window.__bbLastClaim = () => lastClaim; } catch (e) {}
+
+  function auditReply(text, ctx) {
+    if (typeof text !== "string" || !text) return text;
+    if (ctx) {
+      if (ctx.urls) suppliedUrls = ctx.urls.slice();
+      if (ctx.texture) suppliedTexture = ctx.texture.slice();
+      if (typeof ctx.painting === "boolean") paintingShown = ctx.painting;
+    }
+    suppliedUrls = suppliedUrls.concat(ALWAYS_SUPPLIED);
+    let out = text, stripped = 0;
+
+    /* 1. LINKS. A URL is either one we handed over or one it made up.
+       There is no third case, and a made-up link is the most damaging
+       thing here because it looks exactly like a real one. */
+    out = out.replace(/!?\[[^\]]*\]\((https?:\/\/[^)\s]+)\)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s)\]]+)/g,
+      function (whole, mdUrl, angUrl, bare) {
+        const url = mdUrl || angUrl || bare;
+        const ok = suppliedUrls.some(function (u) {
+          // Same file is enough; query strings and thumb sizes differ.
+          return u === url || u.split("?")[0] === url.split("?")[0]
+            || url.indexOf(u.split("?")[0]) === 0;
+        });
+        if (ok) return whole;
+        stripped++;
+        return "";
+      });
+
+    /* 2. QUOTATION MARKS AROUND AN ARTIST ATTRIBUTION. If it puts words in
+       a named artist's mouth that were not in the corpus passage it was
+       given, that is the same failure as inventing a link \u2014 a confident
+       claim with nothing behind it. Flagged rather than removed, because
+       cutting mid-sentence would mangle the reply. */
+    const attrib = /\u201c([^\u201d]{20,})\u201d\s*[\u2014-]+\s*([A-Z][a-z]+(?: [A-Z][a-z]+)*)/g;
+    let m;
+    while ((m = attrib.exec(text)) !== null) {
+      const quoted = m[1];
+      const known = suppliedQuotes.some(function (q) {
+        return q.indexOf(quoted.slice(0, 40)) !== -1;
+      });
+      if (!known) stripped++;   // counted, and visible in __bbAudit
+    }
+
+    /* 3. DESCRIBING A PAINTING IT WAS NEVER SHOWN. The model is given a
+       title and a measured texture, not the image. When it writes "deep,
+       shadowy blues and greens" about a canvas that is mostly yellow, it
+       is inventing evidence to justify the match \u2014 and the person is
+       looking straight at the picture, so the invention is obvious and
+       corrosive. Sentences that describe the painting's appearance are
+       removed; the rest of the reply stands. */
+    if (paintingShown) {
+      const visual = /(?:^|(?<=[.!?]\s))[^.!?]*\b(?:deep|shadow[y]?|bright|dark|pale|vivid|muted|golden|blue[s]?|green[s]?|yellow|violet|crimson|hues?|tones?|palette|brushwork|colou?rs?)\b[^.!?]*[.!?]/gi;
+      out = out.replace(visual, function (sentence) {
+        // Keep it if it is only naming the shared texture, which was given.
+        const bare = sentence.toLowerCase();
+        const allowed = suppliedTexture.some(function (t) {
+          return bare.indexOf(t) !== -1 && bare.length < 90;
+        });
+        if (allowed) return sentence;
+        stripped++;
+        return "";
+      });
+    }
+
+    if (stripped) {
+      out = out.replace(/\s{2,}/g, " ").replace(/\(\s*\)/g, "").trim();
+      try {
+        window.__bbAudit = window.__bbAudit || [];
+        window.__bbAudit.push({ at: Date.now(), stripped: stripped,
+          supplied: suppliedUrls.length });
+      } catch (e) {}
+    }
+    captureClaim(out);
+    clearSupplied();
+    return out;
+  }
+  try { window.__bbAuditReply = (t, c) => auditReply(t, c); } catch (e) {}
+  try { window.__bbNoteSupplied = (u, q) => noteSupplied(u, q); } catch (e) {}
+
+  /* WHAT TO SEARCH.
+
+     If they named someone \u2014 "show me a Monet", "something by Turner" \u2014 that
+     is what to look through. Otherwise fall back to a wide default rather
+     than one painter, because restricting the search to Van Gogh was a
+     choice with nothing behind it.
+
+     The name is taken from what they actually typed. Nothing is inferred
+     about who they might have meant. */
+  function gallerySearchFor(queryText) {
+    const t = String(queryText || "");
+    const m = t.match(/\b(?:by|a|an|some)\s+([A-Z][a-z\u00e0-\u00ff]+(?:\s+(?:van|de|di|von|del)\s+)?(?:\s?[A-Z][a-z\u00e0-\u00ff]+){0,2})/);
+    if (m && m[1] && m[1].length > 3) return m[1].trim();
+    // Wide by default: the whole public domain, not one hand.
+    return "oil painting landscape portrait 19th century";
+  }
+  try { window.__bbGallerySearch = (t) => gallerySearchFor(t); } catch (e) {}
+
+  function galleryAside() {
+    if (galleryBusy && !galleryPick) {
+      // Asked, still measuring. Better to say that than to let the model
+      // fill the gap with something it made up.
+      return "\n\nA PAINTING IS BEING CHOSEN\n"
+        + "They asked to see something and a set of canvases is being measured "
+        + "right now. Say that you are looking and it will be a moment \u2014 do NOT "
+        + "name a painting from your own knowledge in the meantime.";
+    }
+    if (!galleryPick || !galleryPick.painting) return "";
+    const g = galleryPick.painting;
+    const shared = (galleryPick.shared || []).slice(0, 3).join(", ");
+    galleryPick = null;            // offered once, not on every message after
+    return "\n\nA PAINTING HAS ALREADY BEEN SHOWN\n"
+      + g.title + " by " + g.painter + " is on screen already \u2014 it was chosen by "
+      + "measuring canvases and finding one that shares this texture: " + shared + ". "
+      + "Do NOT name a different painting and do NOT give a link; the image is there. "
+      + "You have NOT seen this painting \u2014 you were told its title and a measured "
+      + "texture, nothing more. So do not describe its colours, its light, or what is "
+      + "in it. Saying \u2018deep shadowy blues\u2019 about a canvas you cannot see is inventing "
+      + "evidence to justify the match, and the person is looking straight at it. Name "
+      + "the texture it shares and stop. Never say what it means or what the painter "
+      + "felt.";
+  }
+  /* THE WIDER SEARCH, STARTED HERE AND OFFERED NEXT TURN.
+
+     Conversation searched only the 29 curated passages while the listen
+     panel reached millions. It cannot simply await the wider one \u2014 a
+     network search mid-sentence would stall the reply \u2014 so it starts the
+     search on this message and the result is available on the next, the
+     same way the gallery works. The corpus still answers immediately. */
+  let widePick = null, wideBusy = false;
+
+  function startWideSearch(queryText) {
+    if (wideBusy || typeof BBLens === "undefined" || !BBLens.anyLens) return;
+    let sig;
+    try { sig = sensoryOf(String(queryText || "")); } catch (e) { return; }
+    if (!sig || !Object.keys(sig.modes || {}).length) return;
+    wideBusy = true;
+    BBLens.anyLens(sig, affectOf(String(queryText || "")),
+      { pages: 20, canvases: 6, skipArt: true })
+      .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
+      .catch(function () { widePick = null; })
+      .then(function () { wideBusy = false; });
+  }
+
   function artistAside(queryText) {
     if (typeof BBLens === "undefined" || !queryText) return "";
+    startWideSearch(queryText);
+    // Anything said feeds the scanner too. Any sense, any source.
+    try { feedScanner(sensoryOf(String(queryText)).modes, affectOf(String(queryText))); } catch (e) {}
     let hit = null;
     try {
       hit = BBLens.lens(sensoryOf(String(queryText)), affectOf(String(queryText)));
-    } catch (e) { return ""; }
+    } catch (e) { hit = null; }
+    // Nothing curated crossed, but something wider did on a previous turn.
+    if (!hit && widePick) {
+      hit = widePick;
+      widePick = null;
+    }
     if (!hit) return "";
     const e = hit.entry;
+    noteSupplied(null, e.text);
+    noteSupplied(null, e.original);
     let out = "\n\nAN OLDER ACCOUNT OF THE SAME TEXTURE\n"
       + "Someone wrote about this same texture long ago. Their own words, not a "
       + "reading of them: \u201c" + e.text + "\u201d \u2014 " + e.artist + ", " + e.source
@@ -3948,6 +4648,47 @@ Rules:
         + e.artist + " was writing about " + e.works[0].title
         + " by " + e.works[0].by + " \u2014 you may mention it by name.";
     }
+
+    /* WHERE A SUGGESTION COMES FROM.
+       
+       Asked for a piece of music or a painting, the model will name one
+       from general knowledge \u2014 fluent, usually right, and nothing in this
+       system checks it. That is the one place the whole discipline does
+       not reach.
+       
+       When the corpus has a work or a canvas attached to the matched
+       passage, it can supply the answer instead, and the chain is:
+       their texture \u2192 a passage that shares it \u2192 the thing that passage was
+       actually about \u2192 cited. Nothing invented at any step.
+       
+       When it has nothing, the model may still answer \u2014 but it is told to
+       say the difference, so an ungrounded suggestion is visibly one. */
+    if (e.painting && e.painting.url) {
+      noteSupplied(e.painting.url, null);
+      out += " There is also a painting this passage is about: "
+        + e.painting.title + " (" + e.painting.year + "), public domain, at "
+        + e.painting.url + ". You may name it and give the link.";
+    }
+    /* THE LENS DECIDES WHAT COUNTS; THE MODEL SUPPLIES THE CANDIDATE.
+       
+       The corpus cannot hold all the music and painting in the world, and
+       an ungrounded suggestion from general knowledge is the one place
+       this system's discipline does not reach. But the corpus does not
+       need the catalogue \u2014 it needs the CRITERION. The texture that
+       crossed is the criterion, and it is anti-similar: chosen for what it
+       shares in feel, with the subject subtracted.
+       
+       So: the model may name the piece, but only one that carries THIS
+       texture. Not one about their situation. Choosing on subject is the
+       ordinary move and it is the wrong one here. */
+    out += "\n\nIF THEY ASK FOR SOMETHING TO SEE OR HEAR\n"
+      + "The texture that crossed is: " + (hit.shared || []).join(", ") + ". That is the "
+      + "criterion, and it is the whole point \u2014 anything you suggest must carry THAT "
+      + "texture, not be about their subject. A piece that matches what they are going "
+      + "through is the ordinary choice and the wrong one; a piece that FEELS like this "
+      + "and is about something else entirely is the right one. Say which texture it "
+      + "shares so they can tell whether it lands. Say plainly when the piece is your own "
+      + "suggestion rather than one of these accounts, and never invent a link.";
     return out;
   }
 
@@ -4912,15 +5653,190 @@ Rules:
     memory.dreams = dreams().slice(0, DREAM_MAX);
   }
 
+  /* CROSSINGS BELONG IN THE JOURNAL.
+
+     The scanner records every crossing it finds, and none of it was
+     readable anywhere in the app \u2014 it went into memory and stayed there,
+     reachable only by digging through localStorage in a console. A system
+     that finds things and never shows you is a system where you never find
+     out.
+
+     They render above the dreams, newest first, with what carried, where
+     it came from, and whether it has been checked. */
+  /* CROSSINGS ALREADY STORED, REPAIRED.
+
+     The ones recorded before the live path returned its axes have an empty
+     carrier and a charge of zero \u2014 "carried on \u2014 \u00b7 moved 0" in the journal.
+     Both are recoverable: the two ends are saved in full, so the axes can
+     be recomputed and the passage's charge read from its own words.
+
+     Runs once. Nothing is invented \u2014 it derives from what was already
+     kept, and anything it cannot recover it leaves alone. */
+  function repairCrossings() {
+    if (typeof BBLens === "undefined" || !BBLens.signature) return 0;
+    let fixed = 0;
+    (memory.episodes || []).forEach(function (e) {
+      if (e.kind !== "crossing" || !e.crossing) return;
+      const c = e.crossing;
+      const mineText = (e.turns && e.turns[0] && e.turns[0].text) || "";
+      const theirText = (c.theirs && c.theirs.text) || "";
+      let touched = false;
+
+      if (!c.carrier || !c.carrier.length) {
+        try {
+          const a = BBLens.signature((c.mine && c.mine.modes) || {}, mineText);
+          const b = BBLens.signature({}, theirText);
+          const axes = BBLens.signatureOverlap(a, b);
+          if (axes.length) { c.carrier = axes; touched = true; }
+        } catch (err) {}
+      }
+
+      // A charge of exactly zero on their end is the old placeholder.
+      const flat = c.theirCharge
+        && c.theirCharge.valence === 0 && c.theirCharge.arousal === 0.4;
+      if ((!c.theirCharge || flat) && theirText && typeof affectOf === "function") {
+        try {
+          const aff = affectOf(theirText);
+          c.theirCharge = aff;
+          c.emotion = crossingEmotion(c.mineCharge, aff);
+          e.affect = c.emotion;
+          touched = true;
+        } catch (err) {}
+      }
+      if (touched) fixed++;
+    });
+    /* Collapse duplicates already stored.
+
+       Suppression stops new repeats; it cannot remove the ones recorded
+       before it existed. The same passage sits in the journal a dozen
+       times, which is one crossing written down a dozen times.
+
+       The earliest of each is kept \u2014 that is when it actually happened \u2014
+       along with anything that was rated or produced a question, because
+       those carry information the duplicates do not. */
+    const seenText = Object.create(null);
+    const keep = [];
+    let dropped = 0;
+    (memory.episodes || []).forEach(function (e) {
+      if (e.kind !== "crossing" || !e.crossing) { keep.push(e); return; }
+      const key = String((e.crossing.theirs && e.crossing.theirs.text) || "").slice(0, 120);
+      if (!key) { keep.push(e); return; }
+      const worth = e.kept !== undefined || e.insight;
+      if (!seenText[key] || worth) { seenText[key] = 1; keep.push(e); return; }
+      dropped++;
+    });
+    if (dropped) { memory.episodes = keep; fixed += dropped; }
+
+    if (fixed) saveMemory();
+    return fixed;
+  }
+  try { window.__bbRepair = () => repairCrossings(); } catch (e) {}
+
+  function renderCrossings(list) {
+    const all = (memory.episodes || [])
+      .filter(function (e) { return e.kind === "crossing"; })
+      .slice(-40).reverse();
+    if (!all.length) return;
+
+    const head = document.createElement("div");
+    head.className = "sub";
+    head.style.cssText = "margin:4px 0 8px;font-size:12px;letter-spacing:.03em";
+    head.textContent = "CROSSINGS \u00b7 " + all.length;
+    list.appendChild(head);
+
+    all.forEach(function (e) {
+      const c = e.crossing || {};
+      const card = document.createElement("div");
+      card.className = "dream-card";
+      card.style.borderLeft = "3px solid #4a63d8";
+
+      const when = document.createElement("div");
+      when.className = "dream-line dim";
+      when.style.fontSize = "11px";
+      when.textContent = new Date(e.at).toLocaleString()
+        + (c.heardIn ? "  \u00b7  while " + c.heardIn + " played" : "")
+        + "  \u00b7  " + (c.autonomous ? "found on its own" : "asked for")
+        + (c.theirs && c.theirs.verified === false ? "  \u00b7  live, not verified" : "");
+      card.appendChild(when);
+
+      // What the crossing MADE. The two ends are below it, because the
+      // thing that came into being is what matters, not the pair.
+      if (e.insight) {
+        const made = document.createElement("div");
+        made.className = "dream-line";
+        made.style.cssText = "color:#4a63d8;font-size:14px;margin:2px 0 6px";
+        made.textContent = e.insight;
+        card.appendChild(made);
+      }
+      if (c.theirs && c.theirs.text) {
+        const q = document.createElement("div");
+        q.className = "dream-line";
+        q.textContent = "\u201c" + String(c.theirs.text).slice(0, 260) + "\u201d";
+        card.appendChild(q);
+      }
+      if (c.theirs && c.theirs.source) {
+        const src = document.createElement("div");
+        src.className = "dream-line dim";
+        src.style.fontSize = "12px";
+        src.textContent = c.theirs.source;
+        card.appendChild(src);
+      }
+      const how = document.createElement("div");
+      how.className = "dream-line dim";
+      how.style.fontSize = "11px";
+      how.textContent = "carried on " + ((c.carrier || []).join(", ") || "\u2014")
+        + (c.emotion && typeof c.emotion.shift === "number"
+           ? "  \u00b7  moved " + c.emotion.shift : "");
+      card.appendChild(how);
+
+      // The same question the listen panel asks, so a crossing found in the
+      // background can still teach the floor.
+      // The question wants an answer, and the answer is the memory.
+      if (e.insight || (e.crossing && e.crossing.said)) {
+        card.appendChild(answerCrossing(e));
+      }
+      if (e.kept === undefined) {
+        card.appendChild(rateCrossing(e, { verified: true }));
+      } else {
+        const r = document.createElement("div");
+        r.className = "dream-line dim";
+        r.style.fontSize = "11px";
+        r.textContent = e.kept ? "kept" : "dismissed";
+        card.appendChild(r);
+      }
+      /* Already tested is not finished.
+
+         The first trials ran before the decoy had to match on charge and
+         length, and before anything was recorded \u2014 so those results have no
+         comparison behind them and cannot be checked by anyone. The
+         crossing survived; only the decoy was lost.
+
+         So a tested one can be tested again, and the button says which it
+         is. One trial under the tighter rules, with both passages kept, is
+         worth more than three under the loose ones. */
+      if (e.blindPicked === undefined || !e.blindTrial) {
+        card.appendChild(renderBlindTest(card, e, !!e.blindPicked));
+      }
+      list.appendChild(card);
+    });
+
+    const rule = document.createElement("div");
+    rule.style.cssText = "height:1px;background:var(--border);margin:14px 0 10px";
+    list.appendChild(rule);
+  }
+
+  let repaired = false;
   function renderDreams() {
     const list = document.getElementById("dreamList");
     if (!list) return;
+    if (!repaired) { repaired = true; try { repairCrossings(); } catch (e) {} }
     list.innerHTML = "";
+    renderCrossings(list);
     const all = dreams();
     if (!all.length) {
       const p = document.createElement("p");
       p.className = "sub";
-      p.textContent = "Nothing yet. Blue Bonnet reflects in the background once there's enough conversation to reflect on.";
+      p.textContent = "No dreams yet. Blue Bonnet reflects in the background once there's enough conversation to reflect on.";
       list.appendChild(p);
       return;
     }
@@ -5045,6 +5961,58 @@ Rules:
   /* The numbers this is all for. Novelty alone is easy \u2014 pair anything at
      random and it will be novel. The conjunction is the claim, and the
      novel-but-meaningless rate is the honest cost of it. */
+  /* THE EXPERIMENT'S NUMBER.
+
+     The question is whether this produces connections ITSELF. Not whether
+     the machinery works when someone drives it \u2014 that is scaffolding. So
+     the crossings are counted by who caused them.
+
+     `autonomous` is the only column that bears on the claim. `bothOwn` is
+     the purest case within it: two of the person's own moments joined with
+     nothing from outside, while nobody was watching. */
+  /* What the sorting actually did, cumulatively. */
+  function sortingRates() {
+    const s = (memory.sorting) || { weighed: 0, crossed: 0, listens: 0 };
+    const pct = s.weighed ? (s.crossed / s.weighed * 100) : 0;
+    return {
+      listens: s.listens,
+      weighed: s.weighed,
+      crossed: s.crossed,
+      refused: s.weighed - s.crossed,
+      crossRate: pct.toFixed(2) + "%",
+    };
+  }
+  try { window.__bbSorting = sortingRates; } catch (e) {}
+
+  function crossingRates() {
+    const eps = (memory.episodes || []).filter(function (e) { return e.kind === "crossing"; });
+    const auto = eps.filter(function (e) { return e.crossing && e.crossing.autonomous; });
+    const own = auto.filter(function (e) { return e.crossing.bothOwn; });
+    const said = eps.filter(function (e) { return e.said; });
+    const crossed = eps.filter(function (e) {
+      return e.crossing && e.crossing.connection && e.crossing.connection.crossedSubject;
+    });
+    const shifts = eps.map(function (e) {
+      return (e.crossing && e.crossing.emotion && e.crossing.emotion.shift) || 0;
+    });
+    const meanShift = shifts.length
+      ? Math.round((shifts.reduce(function (a, b) { return a + b; }, 0) / shifts.length) * 1000) / 1000
+      : 0;
+    return {
+      crossings: eps.length,
+      autonomous: auto.length,          // \u2190 the experiment
+      bothTheirOwn: own.length,         // \u2190 the purest case
+      prompted: eps.length - auto.length,
+      subjectCrossed: crossed.length,
+      spokenAbout: said.length,
+      // The only count that means anything: how many pairings became
+      // something. Everything else is apparatus.
+      becameSomething: eps.filter(function (e) { return e.becameSomething; }).length,
+      meanShift: meanShift,
+    };
+  }
+  try { window.__bbCrossings = crossingRates; } catch (e) {}
+
   function dreamRates() {
     const all = (memory.dreams || []);
     const produced = all.filter((d) => (d.insights || []).length || (d.pings || []).length);
@@ -5091,6 +6059,19 @@ Rules:
      ============================================================ */
 
   let listenSeen = [];       // qualities across the whole listen
+  let listenStored = false;  // one episode per piece, not per pause
+  let listenFrames = [];     // raw measurements, for track-relative labelling
+  /* WHAT IT WAS LISTENING TO.
+
+     Every crossing said "Something I heard crossed with\u2026" and never what.
+     Without the source there is no way to know what fired it, which makes
+     the crossing unreadable as evidence \u2014 you cannot check a correspondence
+     against a track you cannot name. */
+  let listenSource = "";
+  let liveTried = false;     // the wide pull happens once, not every 20 frames
+  let crossingStored = false;// one memory per crossing, not per render
+  let anyTried = false;      // the unbounded search runs once per listen
+  let listening_ = false;    // true while a stream is still running
   let listenStop = null;
 
   function listenQualities() {
@@ -5103,8 +6084,545 @@ Rules:
     return Object.keys(count).filter((q) => count[q] >= need);
   }
 
+  /* One card for a crossing, whatever it crossed from. The source is shown
+     and the verified ones are marked, but nothing is drawn differently for
+     being from the shelf \u2014 they competed on the same terms. */
+  /* SEEING IT SORT.
+
+     A crossing shown on its own looks like a lucky guess. The elimination
+     is the algorithm \u2014 most candidates are refused, and that refusal is
+     the thing worth watching. So the search reports every passage it
+     weighs, and the count runs live while it works.
+
+     Refused is grey. What crosses is blue. */
+  function startTrace(result) {
+    const box = document.createElement("div");
+    box.style.cssText = "margin:8px 0;padding:8px 10px;border-radius:8px;"
+      + "border:1px solid var(--border);font-size:11px;"
+      + "font-family:ui-monospace,Menlo,monospace;opacity:.8";
+    const line = document.createElement("div");
+    line.textContent = "sorting\u2026";
+    box.appendChild(line);
+    const last = document.createElement("div");
+    last.style.cssText = "margin-top:4px;opacity:.55;white-space:nowrap;"
+      + "overflow:hidden;text-overflow:ellipsis";
+    box.appendChild(last);
+    result.appendChild(box);
+
+    let seen = 0, crossed = 0;
+    return {
+      saw: function (c) {
+        seen++;
+        if (c.crossed) crossed++;
+        line.textContent = "weighed " + seen + "  \u00b7  refused " + (seen - crossed)
+          + "  \u00b7  crossed " + crossed;
+        // Show what it is looking at, in the colour of the verdict.
+        last.style.color = c.crossed ? "#4a63d8" : "";
+        last.textContent = (c.crossed ? "\u25c6 " : "\u00b7 ")
+          + (c.align != null ? c.align.toFixed(2) + "  " : "")
+          + String(c.text || c.source || "").slice(0, 70);
+      },
+      done: function (landed) {
+        /* The rate, not the impression. How many were weighed and how many
+           survived, across every listen. This is the number that says
+           whether the refusal is real. */
+        try {
+          memory.sorting = memory.sorting || { weighed: 0, crossed: 0, listens: 0 };
+          memory.sorting.weighed += seen;
+          memory.sorting.crossed += crossed;
+          memory.sorting.listens += 1;
+          saveMemory();
+        } catch (e) {}
+        last.textContent = "";
+        line.textContent = "weighed " + seen + "  \u00b7  refused " + (seen - crossed)
+          + (landed ? "  \u00b7  one crossed" : "  \u00b7  none crossed");
+        if (landed) { box.style.borderColor = "#4a63d8"; box.style.opacity = "1"; }
+      },
+    };
+  }
+
+  /* HUNTING WHILE IT LISTENS.
+
+     The search ran once, when the sound stopped. That is not what this is:
+     it should be reading the music and going through passages at the same
+     time, thousands of them, refusing almost all of them, until one
+     crosses or the song ends without one.
+
+     So it runs in a loop for as long as the mic is open. Each pass pulls a
+     fresh batch, weighs every passage against the texture measured SO FAR,
+     and shows what it is looking at. When something crosses it stops and
+     turns blue. Most listens end with nothing, and the counter is the
+     evidence that the refusal was real. */
+
+  /* ============================================================
+     ALWAYS SCANNING.
+
+     The hunt only ran while the mic was open, and it stopped on the first
+     crossing. Neither is how this works. Nothing scans the world for a few
+     seconds and then quits because it found something once \u2014 it keeps
+     going, and the crossings arrive when they arrive.
+
+     So this runs for as long as the app is open, against whatever sensory
+     input is most recent: what is playing, what was just said, the last
+     episode. It never stops on a hit. It records the crossing and carries
+     on scanning.
+
+     Paced so it does not hammer anything: a batch every few seconds, and
+     it idles when there is no sensory input to scan against.
+     ============================================================ */
+
+  let scanning = false;
+  let lastSignature = null;      // whatever came in most recently, any sense
+  let scanCount = 0, scanCrossed = 0;
+  let scanError = null;   // a swallowed error here has hidden two bugs already
+
+  function feedScanner(modes, aff) {
+    if (!modes || !Object.keys(modes).length) return;
+    lastSignature = { modes: modes, aff: aff || { valence: 0, arousal: 0.4 } };
+  }
+  try { window.__bbFeed = (m, a) => feedScanner(m, a); } catch (e) {}
+
+  async function startScanning() {
+    if (scanning || typeof BBLens === "undefined" || !BBLens.anyLens) return;
+    scanning = true;
+    while (scanning) {
+      if (!lastSignature) { await sleep(3000); continue; }
+      const sig = lastSignature;
+      try {
+        const best = await BBLens.anyLens(sig, sig.aff,
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
+            onConsider: function () { scanCount++; } });
+        if (best) {
+          scanCrossed++;
+          // It landed. Record it and keep going \u2014 that is the difference.
+          try {
+            const rec = recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
+              best.shared || [], { autonomous: true, measured: true,
+                                   axes: best.axes || [],
+                                   sameSubject: best.sameSubject, verb: "was taking in" });
+            if (!rec) scanError = "recordCrossing returned null";
+            // A crossing that produces nothing is a match, not a crossing.
+            else generateConnection(rec).catch(function () {});
+          } catch (e) { scanError = e.message; }
+          try { onScanCrossing(best, sig); } catch (e) {}
+        }
+      } catch (e) { scanError = "scan: " + e.message; }
+      await sleep(scanPause());
+    }
+  }
+  /* The pause scales with the pool.
+
+     A pass now pulls five hundred pages. At one pass every three seconds
+     that is ten thousand pages a minute at Wikimedia, which is rude and
+     would get the archive to cut us off.
+
+     So it pulls hard while the far end is small and eases off once it is
+     large: the pool is what matters, and once there are tens of thousands
+     of passages resident there is plenty to scan against without asking
+     for more so often. */
+  function scanPause() {
+    let size = 0;
+    try { size = (BBTexts && BBTexts.poolSize) ? BBTexts.poolSize() : 0; } catch (e) {}
+    const base = size < 2000 ? 4000        // building the pool
+      : size < 10000 ? 15000               // comfortable
+      : 45000;                             // plenty to work with
+    return base + Math.floor(Math.random() * 3000);
+  }
+  function stopScanning() { scanning = false; }
+  try {
+    window.__bbScan = () => ({
+      running: scanning, weighed: scanCount, crossed: scanCrossed,
+      feeding: !!lastSignature,
+      lastError: scanError,
+      // How big the far end has grown. It accumulates for as long as the
+      // app is open, so this is the honest measure of what it is scanning
+      // against \u2014 not the twenty pages of one request.
+      pool: (typeof BBTexts !== "undefined" && BBTexts.poolSize)
+        ? BBTexts.poolSize() : 0,
+    });
+    window.__bbStopScan = stopScanning;
+  } catch (e) {}
+
+  // Where a scan crossing surfaces. Quiet by default \u2014 it goes into the
+  // journal; the panel only shows it if it happens to be open.
+  let onScanCrossing = function () {};
+
+  let huntStop = false;
+  let huntRan = false;   // a continuous hunt makes the one-shot redundant
+
+  async function huntWhileListening(result, getQualities) {
+    huntStop = false;
+    huntRan = true;
+    const trace = startTrace(result);
+    let landed = null;
+
+    while (!huntStop && !landed) {
+      const q = getQualities();
+      if (!q || !q.length) { await sleep(400); continue; }
+      try {
+        const best = await BBLens.anyLens({ modes: { sound: q } },
+          { valence: 0.3, arousal: 0.5 },
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
+            onConsider: trace.saw });
+        if (best) landed = best;
+      } catch (e) { /* keep hunting */ }
+      if (!landed) await sleep(250);   // let the audio thread breathe
+    }
+
+    trace.done(!!landed);
+    if (landed) renderCrossingCard(result, landed, getQualities());
+    return landed;
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ============================================================
+     WHAT YOU KEEP IS WHAT IT LEARNS.
+
+     Nothing got better from use. Play a thousand songs and the algorithm
+     was identical \u2014 the floor stayed where I put it, and I put it there by
+     guessing eight times.
+
+     A kept crossing says the bar was right or too high. A dismissed one
+     says it was too low. That is the only signal that can set a threshold
+     honestly, and it has to come from the person the crossing was for.
+
+     The floor moves in very small steps. One judgement is noise; a hundred
+     is a calibration. And it is bounded, so a run of dismissals cannot
+     starve it into never crossing again.
+     ============================================================ */
+
+  const FLOOR_STEP = 0.004;
+  const FLOOR_MIN = 0.35, FLOOR_MAX = 0.9;
+
+  function learnFromCrossing(kept) {
+    if (typeof BBLens === "undefined" || !BBLens.setFloor) return;
+    let f = BBLens.SIGNATURE_FLOOR;
+    // Kept: the bar is not too low, so it can come down a little and let
+    // more through. Dismissed: it let something weak through, so it rises.
+    f += kept ? -FLOOR_STEP : FLOOR_STEP;
+    f = Math.max(FLOOR_MIN, Math.min(FLOOR_MAX, f));
+    BBLens.setFloor(f);
+    try {
+      memory.calibration = memory.calibration
+        || { kept: 0, dismissed: 0, floor: f };
+      if (kept) memory.calibration.kept++; else memory.calibration.dismissed++;
+      memory.calibration.floor = f;
+      saveMemory();
+    } catch (e) {}
+  }
+  try {
+    window.__bbCalibration = () => (memory.calibration
+      || { kept: 0, dismissed: 0, floor: BBLens.SIGNATURE_FLOOR });
+  } catch (e) {}
+
+  /* ANSWERING IT.
+
+     A crossing produces a question and there was nowhere to put the
+     answer. The question is asked, the recognition happens, and it lands
+     nowhere \u2014 which is the chain stopping one step short of the thing it
+     exists for.
+
+     What they write IS the memory. Not a rating of the crossing, not a
+     note about it: the thing that came into being where the two ends met.
+     It sits beside the computed arms, never replacing them, because the
+     arithmetic describes the join and this is what the join produced. */
+  function answerCrossing(ep) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:8px";
+
+    if (ep.crossing && ep.crossing.said) {
+      const said = document.createElement("div");
+      said.className = "dream-line";
+      said.style.cssText = "font-size:13px;padding-left:10px;"
+        + "border-left:2px solid #4a63d8";
+      said.textContent = ep.crossing.said;
+      wrap.appendChild(said);
+      return wrap;
+    }
+
+    const box = document.createElement("textarea");
+    box.rows = 2;
+    box.placeholder = "what it brought up\u2026";
+    box.style.cssText = "width:100%;font:inherit;font-size:13px;padding:6px 8px;"
+      + "border-radius:8px;border:1px solid var(--border);background:transparent;"
+      + "color:inherit;resize:vertical";
+    wrap.appendChild(box);
+
+    const save = document.createElement("button");
+    save.textContent = "keep this";
+    save.className = "more-btn";
+    save.style.cssText = "margin-top:6px;font-size:12px";
+    save.onclick = function () {
+      const t = box.value.trim();
+      if (!t) return;
+      try {
+        completeCrossing(ep.id, t);
+        // Their words are the memory, so the crossing has become something.
+        ep.becameSomething = true;
+        if (!ep.insight) { ep.insight = t; ep.insightFrom = "person"; }
+        saveMemory();
+      } catch (e) {}
+      wrap.innerHTML = "";
+      const said = document.createElement("div");
+      said.className = "dream-line";
+      said.style.cssText = "font-size:13px;padding-left:10px;"
+        + "border-left:2px solid #4a63d8";
+      said.textContent = t;
+      wrap.appendChild(said);
+    };
+    wrap.appendChild(save);
+    return wrap;
+  }
+
+  /* ============================================================
+     THE TEST THAT SEPARATES THE TWO EXPLANATIONS.
+
+     Five crossings have landed on subject-appropriate material \u2014 a Titanic
+     theme finding an engine room, Glory finding Lincoln \u2014 and the algorithm
+     never sees subject. Two accounts fit:
+
+       COINCIDENCE. Texture is thin, the pool is skewed to one period, and
+       the person completes the meaning afterwards.
+
+       CORRELATION. Texture and subject are not independent in the world. A
+       composer scoring weight and cold reaches for low and dark; a writer
+       describing an engine room reaches for the same. So matching on
+       texture lands on apt material above chance WITHOUT ever seeing
+       subject.
+
+     An audit of the score cannot tell them apart, because neither claims
+     anything extra is in the score.
+
+     What separates them: take another passage carrying the SAME axes,
+     chosen at random from the pool. If the lens's pick feels apter than
+     the decoy at above-chance rates, correlation. If they feel the same,
+     coincidence.
+
+     Shown together, unlabelled, in random order. The person picks the one
+     that fits. Neither they nor the display knows which is which until
+     after.
+     ============================================================ */
+
+  async function decoyFor(ep) {
+    if (!ep || !ep.crossing || typeof BBTexts === "undefined") return null;
+    const axes = (ep.crossing.carrier || []).slice();
+    if (!axes.length) return null;
+    let pool = [];
+    try { pool = await BBTexts.wide(20); } catch (e) { return null; }
+
+    // Same axes, different passage. Not similar to the pick — equivalent to it.
+    /* A FAIR DECOY, NOT MERELY AN AXIS-MATCHED ONE.
+
+       The first version required only the same axes. A passage about a
+       woman looking gay and happy carried "soft" and read as cheerful \u2014
+       so choosing between it and a whispered warning tested whether the
+       person could tell tender from cheerful, not whether the lens's pick
+       carries subject.
+
+       The decoy has to be comparable on everything the test is NOT about:
+       charge and length. Then the only thing left to choose on is the
+       thing under test. */
+    const want = axes.slice().sort().join(",");
+    const theirs = (ep.crossing.theirs && ep.crossing.theirs.text) || "";
+    const theirAff = (ep.crossing.theirCharge)
+      || (typeof affectOf === "function" ? affectOf(theirs) : { valence: 0, arousal: 0 });
+    const theirLen = theirs.length;
+
+    const matches = [];
+    for (let i = 0; i < pool.length; i++) {
+      const p = pool[i];
+      if (p.text === theirs) continue;
+      const sg = BBLens.signature({}, p.text);
+      if (!sg) continue;
+      if (sg.qualities.slice().sort().join(",") !== want) continue;
+      // Comparable charge \u2014 within a quarter on each axis of feeling.
+      let aff = { valence: 0, arousal: 0 };
+      try { aff = affectOf(p.text); } catch (e) {}
+      if (Math.abs(aff.valence - theirAff.valence) > 0.25) continue;
+      if (Math.abs(aff.arousal - theirAff.arousal) > 0.25) continue;
+      // Comparable length \u2014 within half again either way.
+      const r = p.text.length / (theirLen || 1);
+      if (r < 0.6 || r > 1.7) continue;
+      matches.push(p);
+    }
+    if (!matches.length) return null;
+    return matches[Math.floor(Math.random() * matches.length)];
+  }
+
+  function renderBlindTest(card, ep, wasTestedLoosely) {
+    const btn = document.createElement("button");
+    btn.textContent = wasTestedLoosely ? "test it again, properly" : "test it";
+    btn.className = "more-btn";
+    btn.style.cssText = "margin-top:6px;font-size:12px";
+    btn.onclick = async function () {
+      btn.textContent = "finding one with the same texture\u2026";
+      const decoy = await decoyFor(ep);
+      if (!decoy) { btn.textContent = "nothing else carries those axes"; return; }
+      btn.remove();
+
+      const real = { text: (ep.crossing.theirs && ep.crossing.theirs.text) || "",
+                     source: (ep.crossing.theirs && ep.crossing.theirs.source) || "",
+                     isPick: true };
+      const fake = { text: decoy.text, source: decoy.source, isPick: false };
+      const pair = Math.random() < 0.5 ? [real, fake] : [fake, real];
+
+      const box = document.createElement("div");
+      box.style.cssText = "margin-top:8px";
+      const q = document.createElement("div");
+      q.className = "sub";
+      q.style.cssText = "font-size:12px;margin-bottom:6px";
+      q.textContent = "Both carry " + (ep.crossing.carrier || []).join(", ")
+        + ". Which one fits?";
+      box.appendChild(q);
+
+      pair.forEach(function (opt, i) {
+        const b = document.createElement("button");
+        b.style.cssText = "display:block;width:100%;text-align:left;font:inherit;"
+          + "font-size:12px;margin:4px 0;padding:8px 10px;border-radius:8px;"
+          + "border:1px solid var(--border);background:transparent;color:inherit;"
+          + "cursor:pointer";
+        b.textContent = String(opt.text).slice(0, 180);
+        b.onclick = function () {
+          try {
+            /* The whole trial, not just the verdict.
+
+               A tally of four-for-four cannot be examined by anyone \u2014 not
+               by a reader, and not by you a week from now. Without both
+               passages there is no context against the judgement, so the
+               number is unusable as evidence. */
+            memory.blindTest = memory.blindTest || { right: 0, wrong: 0, trials: [] };
+            memory.blindTest.trials = memory.blindTest.trials || [];
+            // A retest replaces its own earlier result. Counting both would
+            // be counting one judgement twice.
+            if (ep.blindPicked !== undefined && !ep.blindTrial) {
+              if (ep.blindPicked) memory.blindTest.right--;
+              else memory.blindTest.wrong--;
+            }
+            if (opt.isPick) memory.blindTest.right++; else memory.blindTest.wrong++;
+            ep.blindPicked = opt.isPick;
+            ep.blindTrial = {
+              at: Date.now(),
+              axes: (ep.crossing.carrier || []).slice(),
+              heardIn: ep.crossing.heardIn || null,
+              pick: { text: real.text, source: real.source },
+              decoy: { text: fake.text, source: fake.source },
+              shownFirst: pair[0].isPick ? "pick" : "decoy",
+              chose: opt.isPick ? "pick" : "decoy",
+            };
+            memory.blindTest.trials.push(ep.blindTrial);
+            saveMemory();
+          } catch (e) {}
+          box.innerHTML = "";
+          const r = document.createElement("div");
+          r.className = "sub";
+          r.style.cssText = "font-size:12px";
+          const t = (memory.blindTest || {});
+          r.textContent = (opt.isPick ? "That was the lens's pick." : "That was the decoy.")
+            + "   \u00b7   " + (t.right || 0) + " of " + ((t.right || 0) + (t.wrong || 0));
+          box.appendChild(r);
+        };
+        box.appendChild(b);
+      });
+      card.appendChild(box);
+    };
+    return btn;
+  }
+  try {
+    window.__bbBlind = () => (memory.blindTest || { right: 0, wrong: 0, trials: [] });
+    // Every trial in full, so the tally can be checked rather than trusted.
+    window.__bbTrials = () => ((memory.blindTest || {}).trials || []);
+  } catch (e) {}
+
+  function rateCrossing(ep, best) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:8px;font-size:12px;opacity:.75;"
+      + "display:flex;align-items:center;gap:6px";
+    const t = document.createElement("span");
+    t.textContent = "Worth reading?";
+    wrap.appendChild(t);
+    [["yes", true], ["no", false]].forEach(function (pair) {
+      const b = document.createElement("button");
+      b.textContent = pair[0];
+      b.style.cssText = "font:inherit;padding:1px 9px;border-radius:999px;"
+        + "cursor:pointer;border:1px solid var(--border);background:transparent";
+      b.onclick = function () {
+        try {
+          ep.kept = pair[1];
+          ep.ratedAt = Date.now();
+          saveMemory();
+        } catch (e) {}
+        learnFromCrossing(pair[1]);
+        wrap.textContent = pair[1]
+          ? "kept \u00b7 floor " + BBLens.SIGNATURE_FLOOR.toFixed(3)
+          : "dismissed \u00b7 floor " + BBLens.SIGNATURE_FLOOR.toFixed(3);
+      };
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function renderCrossingCard(result, best, q) {
+    try {
+      const e = best.entry;
+      const c = document.createElement("div");
+      // A crossing is blue. The searching around it is grey.
+      c.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+        + "border:2px " + (best.verified ? "solid" : "dashed") + " #4a63d8;"
+        + "background:var(--panel2)";
+      if (e.painting && e.painting.url) {
+        const img = document.createElement("img");
+        img.src = e.painting.url; img.alt = e.source; img.loading = "lazy";
+        img.style.cssText = "width:100%;border-radius:8px;display:block;margin-bottom:8px";
+        c.appendChild(img);
+      }
+      const t = document.createElement("div");
+      t.textContent = e.painting ? e.source : "\u201c" + e.text + "\u201d";
+      c.appendChild(t);
+      const src = document.createElement("div");
+      src.className = "sub"; src.style.cssText = "margin-top:6px;font-size:12px";
+      src.textContent = (e.artist || e.source || "") + (e.cite ? "  \u00b7  " + e.cite : "");
+      c.appendChild(src);
+      const how = document.createElement("div");
+      how.className = "sub"; how.style.cssText = "margin-top:4px;font-size:11px";
+      how.textContent = "crossed " + (best.domains || []).join(" \u2192 ")
+        + "  \u00b7  from " + best.from
+        + (best.verified ? "" : ", not verified");
+      c.appendChild(how);
+      let ep = null;
+      try {
+        ep = recordCrossing({ modes: { sound: q } }, e, best.shared || [],
+          { measured: true, verb: "heard", axes: best.axes || [], heardIn: listenSource,
+            sameSubject: best.sameSubject });
+      } catch (err) {}
+      if (ep) {
+        const q = document.createElement("div");
+        q.className = "sub";
+        q.style.cssText = "margin-top:8px;font-size:13px;color:#4a63d8";
+        q.textContent = "\u2026";
+        c.appendChild(q);
+        generateConnection(ep).then(function (t) {
+          q.textContent = t || "";
+          if (!t) { q.remove(); return; }
+          c.appendChild(answerCrossing(ep));
+        }).catch(function () { q.remove(); });
+      }
+      if (ep) c.appendChild(rateCrossing(ep, best));
+      result.appendChild(c);
+    } catch (err) {}
+  }
+
   function renderListen() {
-    const q = listenQualities();
+    /* Per-frame labels use fixed thresholds and real music sits between
+       them \u2014 a whole song came back as three axes. Once the track has been
+       heard through, label it against its OWN spread instead. */
+    let q = listenQualities();
+    if (!listening_ && typeof BBAudio !== "undefined" && BBAudio.qualitiesOfTrack) {
+      try {
+        const better = BBAudio.qualitiesOfTrack(listenFrames);
+        if (better && better.length) q = better;
+      } catch (e) {}
+    }
     const measure = document.getElementById("listenMeasure");
     const result = document.getElementById("listenResult");
     if (!measure || !result) return;
@@ -5112,9 +6630,62 @@ Rules:
     measure.textContent = listenSeen.length
       ? "measured over " + listenSeen.length + " frames \u2014 " + (q.join(", ") || "nothing held")
       : "";
+
+    // Keep it. Once per piece, not once per pause.
+    if (q.length && listenSeen.length >= 40 && !listenStored) {
+      listenStored = true;
+      try {
+        const f = document.getElementById("listenFile");
+        const name = (f && f.files && f.files[0] && f.files[0].name) || "";
+        recordListenEpisode(name.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " "), q);
+      } catch (e) {}
+    }
     result.innerHTML = "";
     if (!q.length) return;
 
+    /* THE CHECK, RENDERED BY THE APP.
+
+       If a texture was claimed in the last hour and something has now been
+       measured, the two go side by side here. Not narrated by the model \u2014
+       the model already had its say and is the thing being checked. */
+    if (lastClaim && (Date.now() - lastClaim.at) < 3600000) {
+      const claimed = lastClaim.qualities;
+      const held = claimed.filter(function (c) { return q.indexOf(c) !== -1; });
+      const missed = claimed.filter(function (c) { return q.indexOf(c) === -1; });
+
+      const card = document.createElement("div");
+      card.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+        + "border:1px solid var(--border);background:var(--panel2);font-size:12px";
+
+      const line = function (label, words, strong) {
+        const d = document.createElement("div");
+        d.style.cssText = "margin:2px 0" + (strong ? ";font-weight:600" : "");
+        d.textContent = label + " " + (words.length ? words.join(", ") : "\u2014");
+        card.appendChild(d);
+      };
+      line("it said:", claimed);
+      line("measured:", q);
+      if (held.length) line("held:", held, true);
+      if (missed.length) line("did not hold:", missed, true);
+
+      const verdict = document.createElement("div");
+      verdict.style.cssText = "margin-top:8px;opacity:.75";
+      verdict.textContent = !held.length
+        ? "Nothing it claimed is in the sound. It chose some other way and "
+          + "described it afterwards."
+        : missed.length
+          ? "Partly. Some of what it said is there and some is not."
+          : "It holds. What it claimed is what is in the sound.";
+      card.appendChild(verdict);
+      result.appendChild(card);
+      lastClaim = null;          // checked once
+    }
+
+    /* ONE LENS, EVERY SOURCE.
+       This searched the 29 curated passages and only fell through to live
+       text when nothing crossed \u2014 which made the shelf the default and
+       everything else a consolation. anyLens puts every source on the same
+       footing and lets the best crossing win, wherever it is from. */
     let hit = null;
     try {
       hit = (typeof BBLens !== "undefined")
@@ -5122,6 +6693,107 @@ Rules:
                       { allowSmallCorpus: true })
         : null;
     } catch (e) { hit = null; }
+
+    /* The hunt covers a mic or tab listen. This one-shot remains for a FILE
+       listen, where there is no continuous stream to hunt alongside. */
+    if (typeof BBLens !== "undefined" && BBLens.anyLens && !listening_
+        && !anyTried && !huntRan) {
+      anyTried = true;
+      const trace = startTrace(result);
+      BBLens.anyLens({ modes: { sound: q } }, { valence: 0.3, arousal: 0.5 },
+        { allowSmallCorpus: true, pages: 20, canvases: 8, onConsider: trace.saw })
+        .then(function (best) {
+          trace.done(!!best);
+          if (!best || (hit && best.entry.id === hit.entry.id)) return;
+          renderCrossingCard(result, best, q);
+        })
+        .catch(function () { trace.done(false); });
+    }
+
+    /* The chain completes here: a crossing happened, so a memory is made.
+
+       This waited for !listening_, so a crossing found while the mic was
+       still open was shown and never stored. The best ones tonight \u2014 read
+       off the screen mid-listen \u2014 are not in the journal because of it. A
+       crossing is a crossing whether or not the sound has stopped. */
+    if (hit && !crossingStored) {
+      crossingStored = true;
+      try {
+        // The axes, like every other path. Without them the journal shows
+        // "carried on \u2014" and the crossing has no evidence attached.
+        recordCrossing({ modes: { sound: q } }, hit.entry, hit.shared,
+          { measured: true, verb: "heard", heardIn: listenSource,
+            axes: hit.axes || [] });
+      } catch (e) {}
+    }
+
+    /* NOTHING CURATED CROSSED \u2014 SO LOOK WIDER.
+
+       The curated corpus is 29 passages and most textures will not be in
+       it. Wikisource holds millions, so when nothing verified crosses, the
+       live corpus is searched rather than reporting a dead end that is
+       really just a small shelf.
+
+       Verified is tried FIRST and always wins. A live passage only appears
+       where there was nothing, and it is labelled so the difference is
+       visible \u2014 unverified material should never quietly stand in for
+       checked material. */
+    /* ONCE, WHEN IT STOPS.
+       renderListen runs every 20 frames while a tab streams. Each run wiped
+       the panel and fired a fresh multi-page fetch, so results flickered in
+       and out, the API was hammered, and the last search raced the ones
+       before it. It waits for the stream to end and runs a single time. */
+    if (!hit && typeof BBTexts !== "undefined" && !listening_ && !liveTried) {
+      liveTried = true;
+      const note = document.createElement("p");
+      note.className = "sub";
+      note.textContent = "Nothing verified shares that texture \u2014 looking wider\u2026";
+      result.appendChild(note);
+
+      // NO query. Searching for the measured qualities would find pages
+      // about brightness and then ask whether they feel bright \u2014 the
+      // subject choosing before the lens runs. Pull wide instead.
+      BBTexts.pickFor({ modes: { sound: q } }, null, { pages: 40 })
+        .then(function (live) {
+          note.remove();
+          if (!live) {
+            const none = document.createElement("p");
+            none.className = "sub";
+            none.textContent = "Nothing crossed, verified or live. That is the common "
+              + "answer and the honest one.";
+            result.appendChild(none);
+            return;
+          }
+          const c = document.createElement("div");
+          c.style.cssText = "margin:10px 0;padding:10px 12px;border-radius:10px;"
+            + "border:1px dashed var(--border);background:var(--panel2)";
+          const t = document.createElement("div");
+          t.textContent = "\u201c" + live.entry.text + "\u201d";
+          c.appendChild(t);
+          const src = document.createElement("div");
+          src.className = "sub";
+          src.style.cssText = "margin-top:6px;font-size:12px";
+          src.textContent = live.entry.source;
+          c.appendChild(src);
+          const sh = document.createElement("div");
+          sh.className = "sub";
+          sh.style.cssText = "margin-top:4px;font-size:11px";
+          sh.textContent = "matched on: " + live.shared.join(", ")
+            + "  \u00b7  live from Wikisource, not verified";
+          c.appendChild(sh);
+          result.appendChild(c);
+          try {
+            recordCrossing({ modes: { sound: q } }, live.entry, live.shared,
+              { measured: true, verb: "heard", heardIn: listenSource,
+                axes: live.axes || [] });
+          } catch (e) {}
+        })
+        .catch(function () {
+          note.textContent = "Nothing verified shares that texture, and the wider "
+            + "search found nothing either.";
+        });
+      return;
+    }
 
     if (!hit) {
       const p = document.createElement("p");
@@ -5185,7 +6857,15 @@ Rules:
       if (!f) return;
       // Read locally. Nothing leaves the device.
       audio.src = URL.createObjectURL(f);
+      listenSource = String(f.name || "").replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ");
       listenSeen = [];
+      listenFrames = [];
+      liveTried = false;
+      crossingStored = false;
+      anyTried = false;
+      huntRan = false;
+      listening_ = true;
+      listenStored = false;
       renderListen();
       audio.play().catch(() => {});
     };
@@ -5195,14 +6875,102 @@ Rules:
       try {
         const h = BBAudio.listen(audio, (m) => {
           if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+          listenFrames.push(m);
         });
         listenStop = h.stop;
       } catch (e) { listenStop = null; }
     };
     // Match when it stops, not continuously \u2014 a piece has to be heard
     // through before what held becomes clear.
-    audio.onpause = renderListen;
-    audio.onended = renderListen;
+    // Listening to whatever is playing elsewhere. Nothing is recorded and
+    // nothing is uploaded \u2014 the stream reaches an analyser and four numbers
+    // per frame come back out.
+    const tabBtn = document.getElementById("listenTabBtn");
+    if (tabBtn) tabBtn.onclick = () => {
+      if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
+        listening_ = false;
+        huntStop = true;
+        tabBtn.textContent = "Listen to another tab"; renderListen(); return; }
+      const measure = document.getElementById("listenMeasure");
+      if (measure) measure.textContent = "choose a tab and tick \u2018share tab audio\u2019\u2026";
+      listenSeen = [];
+      listenFrames = [];
+      listenStored = false;
+      liveTried = false;
+      crossingStored = false;
+      anyTried = false;
+      BBAudio.listenToTab((m) => {
+        if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        listenFrames.push(m);          // raw, for track-relative labelling
+        if (listenSeen.length % 20 === 0) {
+          renderListen();
+          try { feedScanner({ sound: listenQualities() }); } catch (e) {}
+        }
+      }).then((h) => {
+        listenStop = h.stop;
+        listening_ = true;
+        /* The tab names itself. Chrome reports the tab title as the track
+           label, which for a music tab is usually the piece. Falls back to
+           the generic only when the browser gives nothing. */
+        /* Chrome sometimes hands back an internal stream id rather than the
+           tab title \u2014 "web-contents-media-stream://0FDB..." \u2014 which is worse
+           than the generic because it looks like information and is not. */
+        if (h.label && /^[a-z-]+:\/\//i.test(h.label.trim())) h.label = "";
+        listenSource = (h.label && h.label.trim())
+          ? h.label.replace(/\s*[-\u2013\u2014|]\s*(YouTube|Spotify|SoundCloud).*$/i, "").trim()
+          : "another tab";
+        tabBtn.textContent = "Stop listening";
+        // Hunt while it listens, not after.
+        try {
+          const res = document.getElementById("listenResult");
+          if (res) { res.innerHTML = ""; huntWhileListening(res, listenQualities); }
+        } catch (e) {}
+      }).catch((e) => {
+        if (measure) measure.textContent = e.message;
+      });
+    };
+
+    /* The mic. Tab capture is desktop-only, so on a phone this is the whole
+       path. Same analyser, rougher signal, and the frames are marked so a
+       crossing from the room can be told from one off a clean source. */
+    const roomBtn = document.getElementById("listenRoomBtn");
+    if (roomBtn) roomBtn.onclick = () => {
+      if (listenStop) { try { listenStop(); } catch (e) {} listenStop = null;
+        listening_ = false;
+        huntStop = true;
+        roomBtn.textContent = "Listen through the mic"; renderListen(); return; }
+      const measure = document.getElementById("listenMeasure");
+      if (measure) measure.textContent = "listening\u2026 play something out loud";
+      listenSeen = [];
+      listenFrames = [];
+      listenStored = false;
+      liveTried = false;
+      crossingStored = false;
+      anyTried = false;
+      BBAudio.listenToRoom((m) => {
+        if (m.qualities && m.qualities.length) listenSeen.push(m.qualities);
+        listenFrames.push(m);
+        if (listenSeen.length % 20 === 0) {
+          renderListen();
+          try { feedScanner({ sound: listenQualities() }); } catch (e) {}
+        }
+      }).then((h) => {
+        listenStop = h.stop;
+        listening_ = true;
+        listenSource = "the room";
+        roomBtn.textContent = "Stop listening";
+        // Hunt while it listens, not after.
+        try {
+          const res = document.getElementById("listenResult");
+          if (res) { res.innerHTML = ""; huntWhileListening(res, listenQualities); }
+        } catch (e) {}
+      }).catch((e) => {
+        if (measure) measure.textContent = e.message;
+      });
+    };
+
+    audio.onpause = () => { listening_ = false; renderListen(); };
+    audio.onended = () => { listening_ = false; renderListen(); };
   })();
 
   (function wireDreams() {
@@ -5316,8 +7084,53 @@ Rules:
         (a.ep.sensory && Object.keys(a.ep.sensory.modes || {}) || []).forEach((m) => {
           sig.modes[m] = a.ep.sensory.modes[m];
         });
-        artist = BBLens.lens(sig, a.aff);
+        /* THE UNBOUNDED FAR END, WHERE IT MATTERS MOST.
+
+           This searched the 29 curated passages while the listen panel
+           reached millions. Dreams are the autonomous path \u2014 the one the
+           whole experiment rests on \u2014 so it was measuring against the
+           smallest possible far end.
+
+           And dreams have no timing problem: nobody is waiting on a reply,
+           so the network search costs nothing here. It awaits properly. */
+        if (BBLens.anyLens) {
+          artist = await BBLens.anyLens(sig, a.aff, { pages: 20, canvases: 6 });
+        } else {
+          artist = BBLens.lens(sig, a.aff);
+        }
       } catch (e) { artist = null; }
+    }
+
+    /* THE AUTONOMOUS CROSSING.
+
+       Everything else that makes a crossing is triggered by the person:
+       they play something, they ask to see a painting. Those test the
+       machinery, not the claim.
+
+       The claim is that this can produce a connection ITSELF \u2014 nobody
+       asked, nobody was in the room. That is what a dream is, so this is
+       where it has to be recorded. Two of their moments, or one of theirs
+       and one from the corpus, joined while they were not here.
+
+       Recorded whether or not the dream goes on to produce an insight. The
+       crossing happened; the insight is a separate question. */
+    if (typeof recordCrossing === "function") {
+      try {
+        if (artist) {
+          recordCrossing({ modes: sig.modes, aff: a.aff }, artist.entry, artist.shared,
+            { verb: "dreamt", autonomous: true, axes: artist.axes || [],
+              sameSubject: artist.sameSubject });
+        } else if (pair.senses && pair.senses.length) {
+          // Two of their OWN moments crossing is the purer case: nothing
+          // came from outside at all.
+          recordCrossing(
+            { modes: (a.ep.sensory && a.ep.sensory.modes) || {}, aff: a.aff },
+            { source: "an older moment of their own",
+              text: episodeText(b.ep).slice(0, 300),
+              cite: b.ep.id, verified: true, aff: b.aff },
+            pair.senses, { verb: "dreamt", autonomous: true, own: true });
+        }
+      } catch (e) {}
     }
     const artistNote = artist
       ? "\n\nSomeone else wrote about this same texture. Their words, not a reading "
@@ -5607,6 +7420,7 @@ Rules:
 
       if (bubble) bubble.remove();   // re-rendered properly below, with Listen
       loadingRow.remove();
+      text = auditReply(text);
       {
         render("assistant", text);
         messages.push({ role: "assistant", content: text });
