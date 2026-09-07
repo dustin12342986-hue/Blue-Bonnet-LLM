@@ -1356,8 +1356,16 @@
     const found = [];
     const say = opts.onConsider || function () {};
 
-    // 1. what has been checked by hand
-    try {
+    /* 1. what has been checked by hand \u2014 unless it is being held out.
+
+       The 29 curated passages were chosen for being sensory. Random
+       Wikisource prose was not. So the corpus is not cheating, it is a
+       selected set competing against an unselected one, and it wins often
+       enough that the open field never gets a turn.
+
+       Held out, the whole far end is uncurated and everything competes on
+       the same footing. */
+    if (!opts.skipCorpus) try {
       // Walk the corpus visibly rather than silently returning the winner.
       CORPUS.forEach(function (e) {
         const t = textureScore(sig, e);
