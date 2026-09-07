@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-blind";
+  const BUILD = "2026-08-26-showart";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2404,6 +2404,10 @@ BOUNDARIES
         mine: { modes: (mine && mine.modes) || {}, measured: !!opts.measured },
         theirs: { source: theirs.source || theirs.artist || null,
                   cite: theirs.cite || null,
+                  /* A painting crossing that stores only its title is
+                     unreadable \u2014 the whole point is the canvas. Kept here so
+                     the journal can show what was actually crossed to. */
+                  image: (theirs.painting && theirs.painting.url) || null,
                   text: String(theirs.text || "").slice(0, 600),
                   verified: theirs.verified !== false },
         // the carrier between them
@@ -4608,7 +4612,7 @@ Rules:
     if (!sig || !Object.keys(sig.modes || {}).length) return;
     wideBusy = true;
     BBLens.anyLens(sig, affectOf(String(queryText || "")),
-      { pages: 20, canvases: 6, skipArt: true })
+      { pages: 20, canvases: 6 })
       .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
       .catch(function () { widePick = null; })
       .then(function () { wideBusy = false; });
@@ -5768,6 +5772,15 @@ Rules:
         made.textContent = e.insight;
         card.appendChild(made);
       }
+      // The canvas itself, when the crossing was to one.
+      if (c.theirs && c.theirs.image) {
+        const img = document.createElement("img");
+        img.src = c.theirs.image;
+        img.alt = c.theirs.source || "";
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;border-radius:8px;display:block;margin:6px 0";
+        card.appendChild(img);
+      }
       if (c.theirs && c.theirs.text) {
         const q = document.createElement("div");
         q.className = "dream-line";
@@ -5804,7 +5817,19 @@ Rules:
         r.textContent = e.kept ? "kept" : "dismissed";
         card.appendChild(r);
       }
-      if (e.blindPicked === undefined) card.appendChild(renderBlindTest(card, e));
+      /* Already tested is not finished.
+
+         The first trials ran before the decoy had to match on charge and
+         length, and before anything was recorded \u2014 so those results have no
+         comparison behind them and cannot be checked by anyone. The
+         crossing survived; only the decoy was lost.
+
+         So a tested one can be tested again, and the button says which it
+         is. One trial under the tighter rules, with both passages kept, is
+         worth more than three under the loose ones. */
+      if (e.blindPicked === undefined || !e.blindTrial) {
+        card.appendChild(renderBlindTest(card, e, !!e.blindPicked));
+      }
       list.appendChild(card);
     });
 
@@ -6178,7 +6203,10 @@ Rules:
       const sig = lastSignature;
       try {
         const best = await BBLens.anyLens(sig, sig.aff,
-          { allowSmallCorpus: true, pages: 20, skipArt: true,
+          /* Paintings are the third representation and they were switched
+             off on every path for speed. A canvas measured off its pixels
+             competes on the same axes as a passage read off its words. */
+          { allowSmallCorpus: true, pages: 20, canvases: 6,
             onConsider: function () { scanCount++; } });
         if (best) {
           scanCrossed++;
@@ -6250,7 +6278,7 @@ Rules:
       try {
         const best = await BBLens.anyLens({ modes: { sound: q } },
           { valence: 0.3, arousal: 0.5 },
-          { allowSmallCorpus: true, pages: 20, skipArt: true,
+          { allowSmallCorpus: true, pages: 20, canvases: 6,
             onConsider: trace.saw });
         if (best) landed = best;
       } catch (e) { /* keep hunting */ }
@@ -6400,8 +6428,23 @@ Rules:
     try { pool = await BBTexts.wide(20); } catch (e) { return null; }
 
     // Same axes, different passage. Not similar to the pick — equivalent to it.
+    /* A FAIR DECOY, NOT MERELY AN AXIS-MATCHED ONE.
+
+       The first version required only the same axes. A passage about a
+       woman looking gay and happy carried "soft" and read as cheerful \u2014
+       so choosing between it and a whispered warning tested whether the
+       person could tell tender from cheerful, not whether the lens's pick
+       carries subject.
+
+       The decoy has to be comparable on everything the test is NOT about:
+       charge and length. Then the only thing left to choose on is the
+       thing under test. */
     const want = axes.slice().sort().join(",");
     const theirs = (ep.crossing.theirs && ep.crossing.theirs.text) || "";
+    const theirAff = (ep.crossing.theirCharge)
+      || (typeof affectOf === "function" ? affectOf(theirs) : { valence: 0, arousal: 0 });
+    const theirLen = theirs.length;
+
     const matches = [];
     for (let i = 0; i < pool.length; i++) {
       const p = pool[i];
@@ -6409,15 +6452,23 @@ Rules:
       const sg = BBLens.signature({}, p.text);
       if (!sg) continue;
       if (sg.qualities.slice().sort().join(",") !== want) continue;
+      // Comparable charge \u2014 within a quarter on each axis of feeling.
+      let aff = { valence: 0, arousal: 0 };
+      try { aff = affectOf(p.text); } catch (e) {}
+      if (Math.abs(aff.valence - theirAff.valence) > 0.25) continue;
+      if (Math.abs(aff.arousal - theirAff.arousal) > 0.25) continue;
+      // Comparable length \u2014 within half again either way.
+      const r = p.text.length / (theirLen || 1);
+      if (r < 0.6 || r > 1.7) continue;
       matches.push(p);
     }
     if (!matches.length) return null;
     return matches[Math.floor(Math.random() * matches.length)];
   }
 
-  function renderBlindTest(card, ep) {
+  function renderBlindTest(card, ep, wasTestedLoosely) {
     const btn = document.createElement("button");
-    btn.textContent = "test it";
+    btn.textContent = wasTestedLoosely ? "test it again, properly" : "test it";
     btn.className = "more-btn";
     btn.style.cssText = "margin-top:6px;font-size:12px";
     btn.onclick = async function () {
@@ -6450,9 +6501,32 @@ Rules:
         b.textContent = String(opt.text).slice(0, 180);
         b.onclick = function () {
           try {
-            memory.blindTest = memory.blindTest || { right: 0, wrong: 0 };
+            /* The whole trial, not just the verdict.
+
+               A tally of four-for-four cannot be examined by anyone \u2014 not
+               by a reader, and not by you a week from now. Without both
+               passages there is no context against the judgement, so the
+               number is unusable as evidence. */
+            memory.blindTest = memory.blindTest || { right: 0, wrong: 0, trials: [] };
+            memory.blindTest.trials = memory.blindTest.trials || [];
+            // A retest replaces its own earlier result. Counting both would
+            // be counting one judgement twice.
+            if (ep.blindPicked !== undefined && !ep.blindTrial) {
+              if (ep.blindPicked) memory.blindTest.right--;
+              else memory.blindTest.wrong--;
+            }
             if (opt.isPick) memory.blindTest.right++; else memory.blindTest.wrong++;
             ep.blindPicked = opt.isPick;
+            ep.blindTrial = {
+              at: Date.now(),
+              axes: (ep.crossing.carrier || []).slice(),
+              heardIn: ep.crossing.heardIn || null,
+              pick: { text: real.text, source: real.source },
+              decoy: { text: fake.text, source: fake.source },
+              shownFirst: pair[0].isPick ? "pick" : "decoy",
+              chose: opt.isPick ? "pick" : "decoy",
+            };
+            memory.blindTest.trials.push(ep.blindTrial);
             saveMemory();
           } catch (e) {}
           box.innerHTML = "";
@@ -6471,7 +6545,9 @@ Rules:
     return btn;
   }
   try {
-    window.__bbBlind = () => (memory.blindTest || { right: 0, wrong: 0 });
+    window.__bbBlind = () => (memory.blindTest || { right: 0, wrong: 0, trials: [] });
+    // Every trial in full, so the tally can be checked rather than trusted.
+    window.__bbTrials = () => ((memory.blindTest || {}).trials || []);
   } catch (e) {}
 
   function rateCrossing(ep, best) {
