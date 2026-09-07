@@ -112,7 +112,30 @@
     const url = API
       + "?action=query&format=json&origin=*"
       + "&generator=search"
-      + "&gsrsearch=" + encodeURIComponent(term + " painting")
+      /* Actual paintings, not anything that mentions the word.
+
+         Searching text for "painting" returns book covers, museum
+         photographs, diagrams and plates \u2014 anything whose description
+         happens to say it. Commons files paintings under a category tree,
+         so asking for category membership gets canvases and nothing else.
+
+         Not a narrowing of WHICH paintings. Any painter, any period, any
+         subject \u2014 just not things that are not paintings. */
+      /* Actual paintings, not anything that mentions the word.
+
+         Searching text for "painting" returns book covers, museum
+         photographs, diagrams and plates \u2014 anything whose description
+         happens to say it.
+
+         "Category:Paintings by artist" looks like the answer and is not:
+         it holds 4,030 SUBcategories and four files, so incategory: on it
+         matches four things. The subcategories are "Paintings by <name>",
+         and a file in one carries that phrase, so searching for the phrase
+         reaches the canvases themselves.
+
+         Not a narrowing of WHICH paintings. Any painter, any period, any
+         subject \u2014 just not things that are not paintings. */
+      + "&gsrsearch=" + encodeURIComponent('"Paintings by" ' + term)
       + "&gsrnamespace=6"
       + "&gsrlimit=" + (limit || 50)
       /* 120px, not 480.
@@ -143,7 +166,16 @@
         page: info.descriptionurl || null,
         painter: p ? p.name : guessPainter(name) || term,
       };
-    }).filter(function (x) { return x.url && /\.(jpg|jpeg|png)/i.test(x.url); });
+    }).filter(function (x) {
+      if (!x.url || !/\.(jpg|jpeg|png)/i.test(x.url)) return false;
+      // Second pass on the filename, because a category can still contain
+      // a photograph of a frame or a scan of a book jacket.
+      const n = String(x.title || "").toLowerCase();
+      if (/\b(cover|jacket|dust ?jacket|title ?page|frontispiece|bookplate)\b/.test(n)) return false;
+      if (/\b(diagram|chart|map|logo|coat of arms|signature|stamp|banknote|coin)\b/.test(n)) return false;
+      if (/\b(museum|gallery|exhibition|installation|interior of)\b/.test(n)) return false;
+      return true;
+    });
 
     // An empty list is a failure, not an answer. Caching nothing and then
     // reporting "no painting crossed" forever is how this broke the first
