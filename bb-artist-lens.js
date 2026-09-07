@@ -1093,8 +1093,14 @@
        The tags are ignored here. Every passage is read from its own words,
        curated or not. If Berlioz still wins, he wins on the prose. */
     const sigA = signature(sig.modes, sig.text);
-    const sigB = entry.text ? signature({}, entry.text)
-                            : signature(entry.modes, entry.text);
+    /* A MEASURED THING IS READ FROM ITS MEASUREMENT.
+
+       Reading from text is right for writing, and wrong for a canvas: a
+       painting's `text` is its title, and a title says nothing about what
+       the pixels do. Anything carrying measured modes keeps them. */
+    const sigB = (entry.measured || !entry.text)
+      ? signature(entry.modes, null)
+      : signature({}, entry.text);
     const align = signatureMatch(sigA, sigB);
     if (align < SIGNATURE_FLOOR) return { score: 0, shared: [], sameSubject: false,
                                           overlap: [], align: align,
@@ -1244,8 +1250,9 @@
                  // with the signature carrying it is usually empty \u2014 which
                  // is the ideal case, not an absent one.
                  axes: signatureOverlap(signature(sig.modes, sig.text),
-                                        e.text ? signature({}, e.text)
-                                               : signature(e.modes, e.text)),
+                                        (e.measured || !e.text)
+                                          ? signature(e.modes, null)
+                                          : signature({}, e.text)),
                  align: t.align, domains: t.domains };
       }
     });
@@ -1358,6 +1365,8 @@
                       artist: g.painting.painter, source: g.painting.title,
                       cite: g.painting.page || g.painting.url,
                       text: g.painting.title, modes: { sight: q },
+                      // Measured off the canvas, not read off the title.
+                      measured: true,
                       aff: null, verified: false, painting: g.painting };
           const t = textureScore(sig, e);
           if (t.score > 0) {

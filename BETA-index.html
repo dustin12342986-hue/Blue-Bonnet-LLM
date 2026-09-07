@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-fairread";
+  const BUILD = "2026-08-26-thirdrep";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4608,7 +4608,7 @@ Rules:
     if (!sig || !Object.keys(sig.modes || {}).length) return;
     wideBusy = true;
     BBLens.anyLens(sig, affectOf(String(queryText || "")),
-      { pages: 20, canvases: 6, skipArt: true })
+      { pages: 20, canvases: 6 })
       .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
       .catch(function () { widePick = null; })
       .then(function () { wideBusy = false; });
@@ -6190,7 +6190,10 @@ Rules:
       const sig = lastSignature;
       try {
         const best = await BBLens.anyLens(sig, sig.aff,
-          { allowSmallCorpus: true, pages: 20, skipArt: true,
+          /* Paintings are the third representation and they were switched
+             off on every path for speed. A canvas measured off its pixels
+             competes on the same axes as a passage read off its words. */
+          { allowSmallCorpus: true, pages: 20, canvases: 6,
             onConsider: function () { scanCount++; } });
         if (best) {
           scanCrossed++;
@@ -6262,7 +6265,7 @@ Rules:
       try {
         const best = await BBLens.anyLens({ modes: { sound: q } },
           { valence: 0.3, arousal: 0.5 },
-          { allowSmallCorpus: true, pages: 20, skipArt: true,
+          { allowSmallCorpus: true, pages: 20, canvases: 6,
             onConsider: trace.saw });
         if (best) landed = best;
       } catch (e) { /* keep hunting */ }
