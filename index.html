@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-paintings";
+  const BUILD = "2026-08-26-artoff";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4642,7 +4642,7 @@ Rules:
     if (!sig || !Object.keys(sig.modes || {}).length) return;
     wideBusy = true;
     BBLens.anyLens(sig, affectOf(String(queryText || "")),
-      { pages: 20, canvases: 48 })
+      { pages: 20, canvases: 6, skipArt: true })
       .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
       .catch(function () { widePick = null; })
       .then(function () { wideBusy = false; });
@@ -6249,10 +6249,12 @@ Rules:
       const sig = lastSignature;
       try {
         const best = await BBLens.anyLens(sig, sig.aff,
-          /* Paintings are the third representation and they were switched
-             off on every path for speed. A canvas measured off its pixels
-             competes on the same axes as a passage read off its words. */
-          { allowSmallCorpus: true, pages: 20, canvases: 48,
+          /* Art is off. Enabling it was not asked for: the request was to
+             stop the hand-tagged corpus having an unfair advantage, and
+             instead the whole far end got rewritten. Art competed at about
+             36,000 to one against text and never won, so it added nothing
+             but load. Off until it can compete on its own terms. */
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
             onConsider: function () { scanCount++; } });
         if (best) {
           scanCrossed++;
@@ -6333,7 +6335,7 @@ Rules:
       try {
         const best = await BBLens.anyLens({ modes: { sound: q } },
           { valence: 0.3, arousal: 0.5 },
-          { allowSmallCorpus: true, pages: 20, canvases: 48,
+          { allowSmallCorpus: true, pages: 20, skipArt: true,
             onConsider: trace.saw });
         if (best) landed = best;
       } catch (e) { /* keep hunting */ }
@@ -6562,8 +6564,18 @@ Rules:
                by a reader, and not by you a week from now. Without both
                passages there is no context against the judgement, so the
                number is unusable as evidence. */
-            memory.blindTest = memory.blindTest || { right: 0, wrong: 0, trials: [] };
-            memory.blindTest.trials = memory.blindTest.trials || [];
+            /* A blindTest object created by an earlier build has no
+               `trials` key, and `memory.blindTest || {...}` never fires
+               because the object already exists. So seven results were
+               counted and not one comparison was kept \u2014 the tally survived
+               and the evidence behind it did not.
+
+               Built up field by field instead, so an old object is repaired
+               rather than skipped. */
+            if (!memory.blindTest) memory.blindTest = {};
+            if (typeof memory.blindTest.right !== "number") memory.blindTest.right = 0;
+            if (typeof memory.blindTest.wrong !== "number") memory.blindTest.wrong = 0;
+            if (!Array.isArray(memory.blindTest.trials)) memory.blindTest.trials = [];
             // A retest replaces its own earlier result. Counting both would
             // be counting one judgement twice.
             if (ep.blindPicked !== undefined && !ep.blindTrial) {
@@ -6600,7 +6612,11 @@ Rules:
     return btn;
   }
   try {
-    window.__bbBlind = () => (memory.blindTest || { right: 0, wrong: 0, trials: [] });
+    window.__bbBlind = () => {
+      const b = memory.blindTest || {};
+      return { right: b.right || 0, wrong: b.wrong || 0,
+               trials: (b.trials || []).length };
+    };
     // Every trial in full, so the tally can be checked rather than trusted.
     window.__bbTrials = () => ((memory.blindTest || {}).trials || []);
   } catch (e) {}

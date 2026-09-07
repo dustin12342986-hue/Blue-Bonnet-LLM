@@ -1426,15 +1426,7 @@
        Either may be absent. A painting with no passage is still returned,
        because a missing second form is better than nothing \u2014 but it is
        marked, so the difference is visible. */
-    const best = found[0];
-    const written = found.filter(function (f) { return f.from !== "art"; })[0] || null;
-    const painted = found.filter(function (f) { return f.from === "art"; })[0] || null;
-
-    return Object.assign({}, best, {
-      written: written,
-      painted: painted,
-      bothForms: !!(written && painted),
-    });
+    return found[0];
   }
 
   function stats() {
