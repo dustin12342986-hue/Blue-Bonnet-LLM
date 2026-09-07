@@ -97,6 +97,106 @@
   */
 
   const CORPUS = [
+    /* ================================================================
+       EXPANSION, 2026-08-26.
+
+       Twenty-nine passages was not a design, it was what one person could
+       verify by hand \u2014 and it made the curated set both too dominant and
+       too small. Dominant because everything in it was chosen for being
+       sensory; small because a single passage kept winning every loud
+       texture.
+
+       These are added on the same rule as the rest: the original language,
+       a translation made from that original, and a citation to where it can
+       be checked. No paraphrase.
+       ================================================================ */
+
+    {
+      id: "sch-chopin-cannon-flowers",
+      artist: "Robert Schumann",
+      source: "Neue Zeitschrift f\u00fcr Musik, on Chopin",
+      cite: "Gesammelte Schriften \u00fcber Musik und Musiker; de.wikisource.org",
+      sourcing: "corroborated",
+      lang: "de",
+      original: "Kanonen, in Blumen verstreut.",
+      text: "Cannons buried in flowers.",
+      verified: true,
+      // Six words that hold thick and bright against violence, which is
+      // exactly the kind of register a piece of music can reach.
+      modes: { sound: ["cannons"], sight: ["flowers"], barrier: ["buried"] },
+      aff: { valence: 0.2, arousal: 0.8 },
+    },
+
+    {
+      id: "bs-truffle-black-diamond",
+      artist: "Jean Anthelme Brillat-Savarin",
+      source: "Physiologie du go\u00fbt, on the truffle",
+      cite: "fr.wikisource.org, Physiologie du go\u00fbt",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "le diamant noir de la cuisine",
+      text: "the black diamond of the kitchen",
+      verified: true,
+      modes: { taste: ["truffle", "kitchen"], sight: ["black", "diamond"] },
+      aff: { valence: 0.6, arousal: 0.4 },
+    },
+
+    {
+      id: "del-garden-moonlight",
+      artist: "Eug\u00e8ne Delacroix",
+      source: "Journal, evening entry, garden at Champrosay",
+      cite: "Journal 1822-1863; quoted text located via published extracts",
+      sourcing: "corroborated",
+      lang: "fr",
+      original: "Le soir, clair de lune ravissant dans mon petit jardin. Rest\u00e9 \u00e0 me "
+              + "promener tr\u00e8s tard. Je ne pouvais assez jouir de cette douce lumi\u00e8re "
+              + "sur ces saules, du bruit de la petite fontaine et de l\u2019odeur d\u00e9licieuse "
+              + "des plantes qui semblent, \u00e0 cette heure, livrer tous leurs tr\u00e9sors "
+              + "cach\u00e9s.",
+      text: "In the evening, ravishing moonlight in my little garden. Stayed walking "
+          + "very late. I could not get enough of that soft light on the willows, the "
+          + "sound of the little fountain, and the delicious smell of the plants, which "
+          + "at that hour seem to give up all their hidden treasures.",
+      verified: true,
+      // Three senses in one sentence, which is rare and is why it is here.
+      modes: { sight: ["moonlight", "light", "soft"], sound: ["sound", "fountain"],
+               smell: ["smell", "plants"], touch: ["late"] },
+      aff: { valence: 0.7, arousal: 0.2 },
+    },
+
+    {
+      id: "vg-596-blue-sky-pink-peach",
+      artist: "Vincent van Gogh",
+      source: "Letter 596, to Emile Bernard, Arles, c. 12 April 1888 \u2014 colour notes on the sketch",
+      cite: "vangoghletters.org/vg/letters/let596/letter.html",
+      sourcing: "primary",
+      lang: "fr",
+      // Words he wrote directly onto his own drawing, naming the colours he
+      // intended. As close to unmediated as the corpus gets.
+      original: "ciel gros bleu \u2014 pecher rose \u2014 cypres \u2014 poirier blanc \u2014 "
+              + "verger en fleur \u2014 lilas \u2014 vert jaune \u2014 chemin jaune",
+      text: "Big blue sky \u2014 pink peach tree \u2014 cypress \u2014 white pear tree \u2014 "
+          + "orchard in blossom \u2014 lilac \u2014 yellow green \u2014 yellow path",
+      verified: true,
+      modes: { sight: ["blue", "pink", "white", "lilac", "yellow", "green", "blossom", "sky"] },
+      aff: { valence: 0.8, arousal: 0.4 },
+    },
+
+    {
+      id: "vg-609-mistral-blue-violet",
+      artist: "Vincent van Gogh",
+      source: "Letter 609, to Theo, Arles, 12 May 1888 \u2014 colour notes, written in the mistral",
+      cite: "vangoghletters.org/vg/letters/let609/letter.html",
+      sourcing: "primary",
+      lang: "fr",
+      original: "Bleu \u2014 vert gris \u2014 Jaune \u2014 Vert & violet",
+      text: "Blue \u2014 greyish green \u2014 Yellow \u2014 Green and violet",
+      verified: true,
+      modes: { sight: ["blue", "grey", "green", "yellow", "violet"], sound: ["mistral"] },
+      aff: { valence: 0.3, arousal: 0.6 },
+    },
+
+
     /* --- Letter 691, to Theo, Arles, 29 Sept 1888 ---------------------
        Original retrieved from vangoghletters.org/vg/letters/let691.
        Three passages, tagged separately because they carry different
@@ -1434,8 +1534,26 @@
        Either may be absent. A painting with no passage is still returned,
        because a missing second form is better than nothing \u2014 but it is
        marked, so the difference is visible. */
+    /* One winner, on score. The "corpus as bar" version made Berlioz a
+       gate every live passage had to beat, and almost none did \u2014 so it was
+       either him or whatever weak thing slipped past on a texture he did
+       not cover. Reverted. */
     return found[0];
   }
+
+  /* A HARVESTED CORPUS, IF ONE HAS BEEN BUILT.
+
+     Thirty-four hand-sourced passages is a shelf. bb-corpus-live.js, built
+     by the harvester, is a library \u2014 thousands, each carrying at least
+     three sensory axes and each keeping its source.
+
+     Loaded after the curated set and marked as harvested, so a passage
+     nobody read by hand is never mistaken for one that was checked. */
+  try {
+    if (global.BB_CORPUS_LIVE && global.BB_CORPUS_LIVE.length) {
+      CORPUS.push.apply(CORPUS, global.BB_CORPUS_LIVE);
+    }
+  } catch (e) {}
 
   function stats() {
     return {
