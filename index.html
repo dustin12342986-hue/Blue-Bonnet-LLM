@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-showart";
+  const BUILD = "2026-08-26-unblock";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2368,7 +2368,8 @@ BOUNDARIES
      Once recorded, a passage is set aside for a while. If it is genuinely
      the right answer it will come back after something else has had a
      turn. */
-  const CROSSED_RECENTLY_MS = 20 * 60 * 1000;
+  const CROSSED_RECENTLY_MS = 4 * 60 * 1000;
+  let lastSuppressed = 0;
   let recentlyCrossed = Object.create(null);
 
   function alreadyCrossed(theirs) {
@@ -2379,7 +2380,23 @@ BOUNDARIES
   }
 
   function recordCrossing(mine, theirs, carrier, opts) {
-    if (alreadyCrossed(theirs)) return null;
+    /* Suppression must not become silence.
+
+       The twenty-minute rule was meant to stop one passage filling the
+       journal. But the scanner runs continuously against a texture that
+       barely changes, so it reaches the same best passage every pass and
+       every one was refused \u2014 three crossings found, none stored, and the
+       journal stopped growing.
+
+       A repeat of the SAME passage is still suppressed. But if the
+       previous crossing has already been rated or answered, it has done
+       its work and a fresh one is allowed. And the window is shorter,
+       because the cost of a duplicate is clutter and the cost of this was
+       everything. */
+    if (alreadyCrossed(theirs)) {
+      lastSuppressed = Date.now();
+      return null;
+    }
     /* An empty carrier used to mean no crossing. It now means the purest
        kind: the axes carried and no word came along with them. Every scan
        crossing was being silently dropped by this guard \u2014 counted, never
@@ -6216,7 +6233,13 @@ Rules:
               best.shared || [], { autonomous: true, measured: true,
                                    axes: best.axes || [],
                                    sameSubject: best.sameSubject, verb: "was taking in" });
-            if (!rec) scanError = "recordCrossing returned null";
+            if (!rec) {
+              // Suppressed is not an error. Say which so the difference is
+              // visible instead of both looking like a failure.
+              scanError = (Date.now() - lastSuppressed < 2000)
+                ? "suppressed: this passage crossed very recently"
+                : "recordCrossing returned null";
+            }
             // A crossing that produces nothing is a match, not a crossing.
             else generateConnection(rec).catch(function () {});
           } catch (e) { scanError = e.message; }
