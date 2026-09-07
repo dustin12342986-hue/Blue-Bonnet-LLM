@@ -1410,7 +1410,31 @@
       if (Math.abs(b.total - a.total) > 0.0001) return b.total - a.total;
       return (b.verified ? 1 : 0) - (a.verified ? 1 : 0);   // ties only
     });
-    return found[0];
+
+    /* A CROSSING BETWEEN FORMS NEEDS BOTH FORMS.
+
+       This returned one winner \u2014 corpus, text and art competing for a
+       single slot. So a canvas that outscored every passage came back
+       alone, with no words beside it, and a crossing across forms had only
+       one form in it.
+
+       The written end and the painted end are returned together. Both are
+       measured on the same axes and neither is chosen for the other: they
+       simply both crossed the same texture, independently, which is the
+       whole claim.
+
+       Either may be absent. A painting with no passage is still returned,
+       because a missing second form is better than nothing \u2014 but it is
+       marked, so the difference is visible. */
+    const best = found[0];
+    const written = found.filter(function (f) { return f.from !== "art"; })[0] || null;
+    const painted = found.filter(function (f) { return f.from === "art"; })[0] || null;
+
+    return Object.assign({}, best, {
+      written: written,
+      painted: painted,
+      bothForms: !!(written && painted),
+    });
   }
 
   function stats() {

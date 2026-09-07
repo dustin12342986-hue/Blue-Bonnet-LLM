@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-artpool";
+  const BUILD = "2026-08-26-bothforms";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2429,6 +2429,19 @@ BOUNDARIES
                   verified: theirs.verified !== false },
         // the carrier between them
         carrier: carrier.slice(),
+        /* THE OTHER FORM.
+
+           A crossing between forms needs both forms. The painted end is
+           kept alongside the written one so a canvas and a passage that
+           crossed the same texture are stored together, rather than
+           whichever scored higher standing in for both. */
+        alsoPainted: (opts.painted && opts.painted.entry && opts.painted.entry.painting)
+          ? { source: opts.painted.entry.source,
+              artist: opts.painted.entry.artist,
+              image: opts.painted.entry.painting.url,
+              cite: opts.painted.entry.painting.page || opts.painted.entry.painting.url,
+              axes: (opts.painted.axes || []).slice() }
+          : null,
         // Both ends' charges, as facts about each end.
         mineCharge: (mine && mine.aff) || (opts.mineAff || null),
         // What was playing. Without it a crossing cannot be checked.
@@ -5789,6 +5802,22 @@ Rules:
         made.textContent = e.insight;
         card.appendChild(made);
       }
+      // The painted end, shown beside the written one.
+      if (c.alsoPainted && c.alsoPainted.image) {
+        const img = document.createElement("img");
+        img.src = c.alsoPainted.image;
+        img.alt = c.alsoPainted.source || "";
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;border-radius:8px;display:block;margin:6px 0";
+        card.appendChild(img);
+        const cap = document.createElement("div");
+        cap.className = "dream-line dim";
+        cap.style.cssText = "font-size:11px;margin-bottom:6px";
+        cap.textContent = c.alsoPainted.source
+          + (c.alsoPainted.axes && c.alsoPainted.axes.length
+             ? "  \u00b7  " + c.alsoPainted.axes.join(", ") : "");
+        card.appendChild(cap);
+      }
       // The canvas itself, when the crossing was to one.
       if (c.theirs && c.theirs.image) {
         const img = document.createElement("img");
@@ -6232,6 +6261,7 @@ Rules:
             const rec = recordCrossing({ modes: sig.modes, aff: sig.aff }, best.entry,
               best.shared || [], { autonomous: true, measured: true,
                                    axes: best.axes || [],
+                                   painted: best.painted,
                                    sameSubject: best.sameSubject, verb: "was taking in" });
             if (!rec) {
               // Suppressed is not an error. Say which so the difference is
