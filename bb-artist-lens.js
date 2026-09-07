@@ -932,11 +932,38 @@
     Object.keys(modes || {}).forEach(function (m) {
       (modes[m] || []).forEach(function (w) { pooled.push(w); });
     });
-    // Anything written is read directly. Tags are a shortcut, never a
-    // requirement.
+    /* MENTION IS NOT QUALITY.
+
+       Reading axes off the words catches the word however it is used. "It
+       may be soft, but wait till you've heard it" is a passage ABOUT
+       softness, not a soft passage \u2014 and it crossed on `soft`. So did a
+       political sentence promising a nation a bright future.
+
+       A word being discussed sits in a small number of shapes: named as a
+       subject after a copula, quoted, defined, or preceded by a word that
+       marks it as a topic rather than a property. Those are dropped.
+
+       This cannot be perfect. A passage that genuinely IS soft and also
+       says the word will be dropped with the rest, and that loss is
+       accepted \u2014 a false crossing costs more than a missed one, because
+       the whole point is that they are rare. */
     if (text) {
-      String(text).toLowerCase().split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
-        if (w) pooled.push(w);
+      const raw = String(text).toLowerCase();
+      const mentioned = Object.create(null);
+      AXES.concat(Object.keys(QUALITIES)).forEach(function (a) {
+        // "is soft", "was soft", "be soft", "seems soft", "call it soft"
+        const asSubject = new RegExp(
+          "\\b(is|are|was|were|be|been|being|seem|seems|seemed|feels?|felt|"
+          + "call|called|calls|say|says|said|word|term|notion|idea|sense)\\b"
+          + "[^.!?]{0,24}\\b" + a + "\\b");
+        // quoted or set off: 'soft', "soft", \u2018soft\u2019
+        const quoted = new RegExp("[\"'\u2018\u201c]\\s*" + a + "\\s*[\"'\u2019\u201d]");
+        if (asSubject.test(raw) || quoted.test(raw)) mentioned[a] = 1;
+      });
+      raw.split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
+        if (!w) return;
+        if (mentioned[w]) return;      // discussed, not embodied
+        pooled.push(w);
       });
     }
     if (!pooled.length) return null;
