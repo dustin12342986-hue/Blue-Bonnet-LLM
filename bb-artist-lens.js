@@ -1081,8 +1081,20 @@
 
     /* The signature is the carrier. Shared words, if any, are a detail of
        how it happened \u2014 they are reported but they no longer decide. */
+    /* BOTH SIDES MEASURED THE SAME WAY.
+
+       Corpus entries carry hand-written `modes` \u2014 someone read the passage
+       and tagged it. Live passages carry only their raw text. So the curated
+       side arrived with dense clean axes and the open side with whatever
+       its prose happened to yield, and the corpus won on preparation rather
+       than on fit. Berlioz kept beating thousands of passages because he
+       had been tagged and they had not.
+
+       The tags are ignored here. Every passage is read from its own words,
+       curated or not. If Berlioz still wins, he wins on the prose. */
     const sigA = signature(sig.modes, sig.text);
-    const sigB = signature(entry.modes, entry.text);
+    const sigB = entry.text ? signature({}, entry.text)
+                            : signature(entry.modes, entry.text);
     const align = signatureMatch(sigA, sigB);
     if (align < SIGNATURE_FLOOR) return { score: 0, shared: [], sameSubject: false,
                                           overlap: [], align: align,
@@ -1232,7 +1244,8 @@
                  // with the signature carrying it is usually empty \u2014 which
                  // is the ideal case, not an absent one.
                  axes: signatureOverlap(signature(sig.modes, sig.text),
-                                        signature(e.modes, e.text)),
+                                        e.text ? signature({}, e.text)
+                                               : signature(e.modes, e.text)),
                  align: t.align, domains: t.domains };
       }
     });
