@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-mention";
+  const BUILD = "2026-08-26-showart";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2404,6 +2404,10 @@ BOUNDARIES
         mine: { modes: (mine && mine.modes) || {}, measured: !!opts.measured },
         theirs: { source: theirs.source || theirs.artist || null,
                   cite: theirs.cite || null,
+                  /* A painting crossing that stores only its title is
+                     unreadable \u2014 the whole point is the canvas. Kept here so
+                     the journal can show what was actually crossed to. */
+                  image: (theirs.painting && theirs.painting.url) || null,
                   text: String(theirs.text || "").slice(0, 600),
                   verified: theirs.verified !== false },
         // the carrier between them
@@ -5767,6 +5771,15 @@ Rules:
         made.style.cssText = "color:#4a63d8;font-size:14px;margin:2px 0 6px";
         made.textContent = e.insight;
         card.appendChild(made);
+      }
+      // The canvas itself, when the crossing was to one.
+      if (c.theirs && c.theirs.image) {
+        const img = document.createElement("img");
+        img.src = c.theirs.image;
+        img.alt = c.theirs.source || "";
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;border-radius:8px;display:block;margin:6px 0";
+        card.appendChild(img);
       }
       if (c.theirs && c.theirs.text) {
         const q = document.createElement("div");
