@@ -1385,7 +1385,7 @@
     if (!opts.skipArt && typeof global.BBGallery !== "undefined") {
       try {
         const g = await global.BBGallery.pickFor(sig, aff,
-          opts.painter || "oil painting landscape portrait", { n: opts.canvases || 8 });
+          opts.painter || "oil painting landscape portrait", { n: opts.canvases || 48 });
         if (g && g.painting) {
           const q = g.painting.qualities || [];
           const e = { id: "art-" + String(g.painting.title).slice(0, 20),

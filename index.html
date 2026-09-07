@@ -1229,7 +1229,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-unblock";
+  const BUILD = "2026-08-26-artpool";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -4629,7 +4629,7 @@ Rules:
     if (!sig || !Object.keys(sig.modes || {}).length) return;
     wideBusy = true;
     BBLens.anyLens(sig, affectOf(String(queryText || "")),
-      { pages: 20, canvases: 6 })
+      { pages: 20, canvases: 48 })
       .then(function (r) { widePick = (r && r.from !== "corpus") ? r : null; })
       .catch(function () { widePick = null; })
       .then(function () { wideBusy = false; });
@@ -6223,7 +6223,7 @@ Rules:
           /* Paintings are the third representation and they were switched
              off on every path for speed. A canvas measured off its pixels
              competes on the same axes as a passage read off its words. */
-          { allowSmallCorpus: true, pages: 20, canvases: 6,
+          { allowSmallCorpus: true, pages: 20, canvases: 48,
             onConsider: function () { scanCount++; } });
         if (best) {
           scanCrossed++;
@@ -6278,6 +6278,8 @@ Rules:
       // against \u2014 not the twenty pages of one request.
       pool: (typeof BBTexts !== "undefined" && BBTexts.poolSize)
         ? BBTexts.poolSize() : 0,
+      canvases: (typeof BBGallery !== "undefined" && BBGallery.artPoolSize)
+        ? BBGallery.artPoolSize() : 0,
     });
     window.__bbStopScan = stopScanning;
   } catch (e) {}
@@ -6301,7 +6303,7 @@ Rules:
       try {
         const best = await BBLens.anyLens({ modes: { sound: q } },
           { valence: 0.3, arousal: 0.5 },
-          { allowSmallCorpus: true, pages: 20, canvases: 6,
+          { allowSmallCorpus: true, pages: 20, canvases: 48,
             onConsider: trace.saw });
         if (best) landed = best;
       } catch (e) { /* keep hunting */ }
@@ -7133,7 +7135,7 @@ Rules:
            And dreams have no timing problem: nobody is waiting on a reply,
            so the network search costs nothing here. It awaits properly. */
         if (BBLens.anyLens) {
-          artist = await BBLens.anyLens(sig, a.aff, { pages: 20, canvases: 6 });
+          artist = await BBLens.anyLens(sig, a.aff, { pages: 20, canvases: 48 });
         } else {
           artist = BBLens.lens(sig, a.aff);
         }

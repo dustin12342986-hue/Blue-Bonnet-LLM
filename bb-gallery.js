@@ -114,8 +114,18 @@
       + "&generator=search"
       + "&gsrsearch=" + encodeURIComponent(term + " painting")
       + "&gsrnamespace=6"
-      + "&gsrlimit=" + (limit || 40)
-      + "&prop=imageinfo&iiprop=url&iiurlwidth=480";
+      + "&gsrlimit=" + (limit || 50)
+      /* 120px, not 480.
+
+          Luminance, saturation and contrast are averages over the whole
+          canvas \u2014 they barely move between 480 and 120, because the
+          measurement is already averaging pixels. But the download is
+          sixteen times smaller, which is the difference between six
+          canvases a pass and a hundred.
+
+          Edge density does suffer at this size and is the one axis to
+          treat as weaker. */
+      + "&prop=imageinfo&iiprop=url&iiurlwidth=120";
 
     const res = await fetch(url);
     if (!res.ok) throw new Error("Commons API " + res.status);
@@ -150,38 +160,54 @@
     return m ? m[1].trim() : null;
   }
 
+  /* MEASURED IN PARALLEL, AND KEPT.
+
+     This awaited each canvas in turn \u2014 download, measure, then the next
+     one. Sequential fetches over a network, which is why six felt like a
+     ceiling and paintings could never compete with tens of thousands of
+     passages.
+
+     They go out together now, and everything measured stays measured for
+     the session, so the far end grows the same way the text pool does. */
+  const ART_CONCURRENCY = 24;
+  let artPool = [];
+
   async function measureAll(key, n) {
     if (typeof global.BBVision === "undefined") throw new Error("BBVision not loaded");
     const list = await catalogue(key);
-    const take = list.slice(0, n || 24);
-    const out = [];
-    for (let i = 0; i < take.length; i++) {
-      const item = take[i];
-      if (measured[item.url]) { out.push(measured[item.url]); continue; }
-      try {
-        const m = await global.BBVision.fromURL(item.url, 384);
-        if (!m) continue;
-        const rec = Object.assign({}, item, m);
-        measured[item.url] = rec;
-        out.push(rec);
-      } catch (e) { /* skip */ }
+    const want = n || 24;
+
+    const fresh = list.filter(function (it) { return !measured[it.url]; }).slice(0, want);
+    for (let i = 0; i < fresh.length; i += ART_CONCURRENCY) {
+      const batch = fresh.slice(i, i + ART_CONCURRENCY);
+      const done = await Promise.allSettled(batch.map(function (item) {
+        return global.BBVision.fromURL(item.url, 120).then(function (m) {
+          return m ? Object.assign({}, item, m) : null;
+        });
+      }));
+      done.forEach(function (r) {
+        if (r.status === "fulfilled" && r.value) {
+          measured[r.value.url] = r.value;
+          artPool.push(r.value);
+        }
+      });
     }
-    return relative(out);
+
+    // Everything measured this session, not just this pass.
+    const all = Object.keys(measured).map(function (u) { return measured[u]; });
+    return relative(all);
   }
 
   /* QUALITIES RELATIVE TO THE SET, NOT TO A NUMBER I CHOSE.
 
      BBVision's thresholds come from photographic norms: dark below 0.30
-     luminance, bright above 0.62. Real paintings do not live there. These
-     canvases measured 0.31 to 0.45 — every one of them neither dark nor
-     bright — so almost all produced only "thick" and "rough", a two-word
-     vocabulary that could not match anything. The gallery fetched and
-     measured correctly and then had nothing to say.
+     luminance, bright above 0.62. Real paintings do not live there. A set
+     of canvases measured 0.31 to 0.45 \u2014 every one of them neither dark nor
+     bright \u2014 so almost all produced only "thick" and "rough", a two-word
+     vocabulary that could not match anything.
 
      Same mistake as the rarity floor, and the same fix: a painting is dark
-     if it sits at the dark end of THIS set. Positional, not absolute. It
-     holds for Van Gogh, for Rembrandt, and for whatever is added next,
-     because it stops being my number and starts being the corpus's. */
+     if it sits at the dark end of THIS set. Positional, not absolute. */
   function relative(set) {
     if (set.length < 3) return set;
     const by = function (f) {
@@ -204,6 +230,8 @@
       return Object.assign({}, x, { qualities: q, relative: true });
     });
   }
+
+  function artPoolSize() { return Object.keys(measured).length; }
 
   /**
    * pickFor(sig, aff, key) -> { painting, shared } | null
@@ -254,6 +282,7 @@
     guessPainter: guessPainter,
     catalogue: catalogue,
     measureAll: measureAll,
+    artPoolSize: artPoolSize,
     pickFor: pickFor,
     stats: stats,
     API: API,
