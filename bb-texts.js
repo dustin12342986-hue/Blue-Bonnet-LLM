@@ -126,15 +126,34 @@
      never the meaning. */
   /* Forms where sensation is the subject. More of them than before, because
      the pull was drawing from six categories and calling it the internet. */
+  /* ART, NOT JOURNALS.
+
+     The conduit only carries when both ends are made things. Odesza on one
+     side and a business column on the other has a strong end and a weak
+     one, and nothing much travels \u2014 which is why the crossings went
+     ordinary the moment the curated corpus stopped standing in front.
+
+     "Essays" caught trade writing. The magazine volumes came in wholesale.
+     Those are records, not art, and they were never what this was for.
+
+     Poetry first, because it is the densest sensory writing there is, then
+     literary prose. Nothing periodical, nothing archival. */
   const PERCEPTUAL = [
-    "incategory:Poems", "incategory:Poetry", "incategory:Nature",
-    "incategory:Travel_literature", "incategory:Essays", "incategory:Letters",
-    "incategory:Diaries", "incategory:Novels", "incategory:Short_stories",
-    "incategory:Autobiographies", "incategory:Sea_stories",
-    "incategory:Ghost_stories", "incategory:Fairy_tales",
-    "incategory:Plays", "incategory:Speeches", "incategory:Sketches",
+    "incategory:Poems", "incategory:Poetry", "incategory:Sonnets",
+    "incategory:Ballads", "incategory:Elegies", "incategory:Odes",
+    "incategory:Lyric_poetry", "incategory:Narrative_poetry",
+    "incategory:Novels", "incategory:Short_stories", "incategory:Fairy_tales",
+    "incategory:Ghost_stories", "incategory:Sea_stories",
+    "incategory:Romances", "incategory:Fables", "incategory:Myths",
   ];
 
+  /* Excluded by name, because a category alone does not keep them out \u2014
+     a magazine can be filed under Short stories and still be a magazine. */
+  const NOT_ART = new RegExp(
+    "\\b(magazine|periodical|journal|gazette|bulletin|annual report|"
+    + "proceedings|transactions|almanac|directory|catalogue|encyclop|"
+    + "dictionary|handbook|manual|digest|business|commerce|statistics|"
+    + "census|hansard|congressional|patent|advertis|obituar)\\b", "i");
   /* ============================================================
      THE POOL GROWS. IT DOES NOT RESET.
 
@@ -207,6 +226,9 @@
       const rev = pg.revisions && pg.revisions[0];
       const slot = rev && rev.slots && rev.slots.main;
       const wikitext = (slot && slot["*"]) || (rev && rev["*"]) || "";
+      // A category alone does not keep a magazine out \u2014 one can be filed
+      // under Short stories and still be a magazine.
+      if (NOT_ART.test(String(pg.title || ""))) return;
       all = all.concat(passagesFrom(stripWikitext(wikitext), pg.title,
         "https://en.wikisource.org/?curid=" + id));
     });
