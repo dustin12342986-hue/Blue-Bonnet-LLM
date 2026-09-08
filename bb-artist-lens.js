@@ -1050,19 +1050,56 @@
     if (text) {
       const raw = String(text).toLowerCase();
       const mentioned = Object.create(null);
-      AXES.concat(Object.keys(QUALITIES)).forEach(function (a) {
+      // Same flaw as below: check every word, not just the axis names.
+      const ALLWORDS = [];
+      Object.keys(QUALITIES).forEach(function (k) {
+        QUALITIES[k].forEach(function (w) { if (ALLWORDS.indexOf(w) === -1) ALLWORDS.push(w); });
+      });
+      ALLWORDS.forEach(function (a) {
         // "is soft", "was soft", "be soft", "seems soft", "call it soft"
         const asSubject = new RegExp(
-          "\\b(is|are|was|were|be|been|being|seem|seems|seemed|feels?|felt|"
-          + "call|called|calls|say|says|said|word|term|notion|idea|sense)\\b"
+          "\\b(is|are|was|were|be|been|being|seem|seems|seemed|"
+          + "call|called|calls|say|says|said|word|term|notion|idea)\\b"
           + "[^.!?]{0,24}\\b" + a + "\\b");
         // quoted or set off: 'soft', "soft", \u2018soft\u2019
         const quoted = new RegExp("[\"'\u2018\u201c]\\s*" + a + "\\s*[\"'\u2019\u201d]");
         if (asSubject.test(raw) || quoted.test(raw)) mentioned[a] = 1;
       });
+      /* AN ABSTRACT USE IS NOT A SENSATION EITHER.
+
+         The mention filter catches a word named as a subject \u2014 "it may be
+         soft" \u2014 but not one describing an idea or a person. "A quiet and
+         sublime enthusiast" is about a man's character; "a bright future"
+         is about a nation. Neither is anything you could perceive, and both
+         were crossing.
+
+         A texture word attached to an abstract noun is doing metaphorical
+         work, not sensory work. Those are dropped, and it is the same
+         distinction as the topic term: aboutness is not quality. */
+      const ABSTRACT = "enthusiast|character|temper|spirit|mind|soul|genius|nature|"
+        + "manner|humour|humor|disposition|intellect|wit|judgment|judgement|"
+        + "future|prospect|hope|hopes|prospects|fortune|fortunes|days|times|age|"
+        + "reason|thought|thoughts|idea|ideas|truth|faith|cause|purpose|"
+        + "policy|power|influence|reputation|fame|honour|honor|virtue";
+      /* Keyed on the WORD, not the axis name. "Quiet" maps to the soft
+         axis, so checking for the word "soft" finds nothing in "a quiet
+         enthusiast" \u2014 the sentence never says soft. Every word in every
+         axis list has to be checked on its own. */
+      const abstractUse = Object.create(null);
+      Object.keys(QUALITIES).forEach(function (a) {
+        QUALITIES[a].forEach(function (word) {
+          // "a quiet enthusiast", "a bright future", "the dark days"
+          const before = new RegExp("\\b" + word + "\\b[^.!?]{0,20}?\\b(" + ABSTRACT + ")\\b");
+          // "an enthusiast, quiet and sublime"
+          const after = new RegExp("\\b(" + ABSTRACT + ")\\b[^.!?]{0,20}?\\b" + word + "\\b");
+          if (before.test(raw) || after.test(raw)) abstractUse[word] = 1;
+        });
+      });
+
       raw.split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
         if (!w) return;
         if (mentioned[w]) return;      // discussed, not embodied
+        if (abstractUse[w]) return;    // metaphorical, not perceptual
         pooled.push(w);
       });
     }
@@ -1451,21 +1488,49 @@
      head start, because that would be the shelf choosing again.
      ========================================================== */
 
+  /* ============================================================
+     A PASSAGE HAS TO RE-EARN THE TOP SLOT.
+
+     Six passages had taken 43, 34, 32, 28, 25 and 24 crossings between
+     them while everything else sat in single figures. They sit on common
+     axis combinations, they stay in the pool for the session, and nothing
+     stopped them winning again the moment the same texture came round.
+
+     The old guard blocked them at the RECORDING stage, which was worse
+     than useless: the passage still won the scoring, so nothing else got a
+     turn and the crossing was simply lost.
+
+     So the penalty goes in the score. A passage that won recently is
+     demoted, and the demotion fades over a few hours. A genuinely better
+     match still wins immediately; a passage that merely keeps turning up
+     has to beat the field again rather than coasting.
+     ============================================================ */
+
+  const WON_DECAY_MS = 3 * 60 * 60 * 1000;   // a few hours
+  const WON_PENALTY = 1.2;                   // demotion, not a ban
+  let wonAt = Object.create(null);
+
+  function noteWinner(text) {
+    const k = String(text || "").slice(0, 120);
+    if (k) wonAt[k] = Date.now();
+  }
+  function recencyPenalty(text) {
+    const k = String(text || "").slice(0, 120);
+    const when = wonAt[k];
+    if (!when) return 0;
+    const age = Date.now() - when;
+    if (age >= WON_DECAY_MS) { delete wonAt[k]; return 0; }
+    // Full penalty when just won, fading linearly to nothing.
+    return WON_PENALTY * (1 - age / WON_DECAY_MS);
+  }
+
   async function anyLens(sig, aff, opts) {
     opts = opts || {};
-    const found = [];
+    let found = [];
     const say = opts.onConsider || function () {};
 
-    /* 1. what has been checked by hand \u2014 unless it is being held out.
-
-       The 29 curated passages were chosen for being sensory. Random
-       Wikisource prose was not. So the corpus is not cheating, it is a
-       selected set competing against an unselected one, and it wins often
-       enough that the open field never gets a turn.
-
-       Held out, the whole far end is uncurated and everything competes on
-       the same footing. */
-    if (!opts.skipCorpus) try {
+    // 1. what has been checked by hand
+    try {
       // Walk the corpus visibly rather than silently returning the winner.
       CORPUS.forEach(function (e) {
         const t = textureScore(sig, e);
@@ -1514,6 +1579,15 @@
     }
 
     if (!found.length) return null;
+
+    // Demote anything that won recently, before choosing.
+    found.forEach(function (f) {
+      const p = recencyPenalty(f.entry && f.entry.text);
+      if (p) { f.recencyPenalty = p; f.total -= p; }
+    });
+    found = found.filter(function (f) { return f.total > 0; });
+    if (!found.length) return null;
+
     found.sort(function (a, b) {
       if (Math.abs(b.total - a.total) > 0.0001) return b.total - a.total;
       return (b.verified ? 1 : 0) - (a.verified ? 1 : 0);   // ties only
@@ -1534,6 +1608,8 @@
        Either may be absent. A painting with no passage is still returned,
        because a missing second form is better than nothing \u2014 but it is
        marked, so the difference is visible. */
+    if (found[0] && found[0].entry) noteWinner(found[0].entry.text);
+
     /* One winner, on score. The "corpus as bar" version made Berlioz a
        gate every live passage had to beat, and almost none did \u2014 so it was
        either him or whatever weak thing slipped past on a texture he did
@@ -1573,6 +1649,8 @@
   global.BBLens = {
     lens: lens,
     anyLens: anyLens,
+    noteWinner: noteWinner,
+    recencyPenalty: recencyPenalty,
     phrase: phrase,
     stats: stats,
     corpus: CORPUS,
