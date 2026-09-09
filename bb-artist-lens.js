@@ -1527,7 +1527,13 @@
     if (!opts.skipDreams && global.BB_DREAMS && global.BB_DREAMS.length) {
       try {
         global.BB_DREAMS.forEach(function (d) {
-          const e = { id: "dream-" + d.id, source: "a dream", artist: "a dream",
+          /* Named so it is unmistakable. Every other far end is something
+             somebody made; this one is something somebody had, and it is
+             not the person reading. That difference should be on the card,
+             not inferred from a bare "a dream". */
+          const e = { id: "dream-" + d.id,
+                      source: "someone else's dream",
+                      artist: "someone else's dream",
                       text: d.text, cite: "Hall/Van de Castle, dreambank.net",
                       verified: false, dream: true, modes: {} };
           const t = textureScore(sig, e);
