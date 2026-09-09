@@ -1472,10 +1472,76 @@
     return WON_PENALTY * (1 - age / WON_DECAY_MS);
   }
 
+  /* THE CENTRE OF MORE THAN TWO.
+
+     The lens takes one end and finds another. Three ends is a different
+     operation: not what any one of them reaches, but what sits at the
+     position all of them jointly imply.
+
+     The joint position is the union of what they carry, weighted by how
+     many hold each axis. An axis all three share is the centre of the
+     figure; one held by a single end is an edge of it. Searching from
+     there finds what belongs to the whole rather than to any part. */
+  function centreOf(texts) {
+    const held = Object.create(null);
+    let n = 0;
+    (texts || []).forEach(function (t) {
+      const sg = signature({}, t);
+      if (!sg) return;
+      n++;
+      sg.qualities.forEach(function (a) { held[a] = (held[a] || 0) + 1; });
+    });
+    if (!n) return null;
+    const axes = Object.keys(held);
+    if (!axes.length) return null;
+    // Ordered by how much of the figure holds them.
+    axes.sort(function (a, b) { return held[b] - held[a]; });
+    return { axes: axes, held: held, ends: n,
+             shared: axes.filter(function (a) { return held[a] === n; }) };
+  }
+
+  async function lensFromCentre(texts, aff, opts) {
+    const c = centreOf(texts);
+    if (!c) return null;
+    // Search from the joint position, as though it were one end.
+    const sig = { modes: { all: c.axes } };
+    const hit = await anyLens(sig, aff || { valence: 0, arousal: 0.3 },
+      Object.assign({ allowSmallCorpus: true }, opts || {}));
+    return hit ? Object.assign({}, hit, { centre: c }) : null;
+  }
+
   async function anyLens(sig, aff, opts) {
     opts = opts || {};
     let found = [];
     const say = opts.onConsider || function () {};
+
+    /* Real dreams, as a far end.
+
+       978 reports from people who wrote down what they dreamt. A dream is
+       the one kind of writing that was never composed \u2014 nobody chose its
+       register and nobody made it reachable. So when a measured texture
+       crosses to one, nothing on the far end was arranged.
+
+       Weighed on identical terms to everything else. No handicap, no
+       preference, and it refuses at the same rate. */
+    if (!opts.skipDreams && global.BB_DREAMS && global.BB_DREAMS.length) {
+      try {
+        global.BB_DREAMS.forEach(function (d) {
+          const e = { id: "dream-" + d.id, source: "a dream", artist: "a dream",
+                      text: d.text, cite: "Hall/Van de Castle, dreambank.net",
+                      verified: false, dream: true, modes: {} };
+          const t = textureScore(sig, e);
+          try { if (opts.onConsider) opts.onConsider(e, t); } catch (err) {}
+          if (t.score > 0 && !t.sameSubject) {
+            found.push({ entry: e, total: t.score, shared: t.shared,
+                         axes: signatureOverlap(signature(sig.modes, sig.text),
+                                                signature({}, e.text)),
+                         sameSubject: false, align: t.align, from: "dream",
+                         verified: false });
+          }
+        });
+      } catch (e) {}
+    }
 
     // 1. what has been checked by hand
     try {
@@ -1597,6 +1663,8 @@
   global.BBLens = {
     lens: lens,
     anyLens: anyLens,
+    centreOf: centreOf,
+    lensFromCentre: lensFromCentre,
     noteWinner: noteWinner,
     recencyPenalty: recencyPenalty,
     phrase: phrase,

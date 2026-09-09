@@ -255,6 +255,7 @@
 <script src="bb-vision.js"></script>
 <script src="bb-gallery.js"></script>
 <script src="bb-texts.js"></script>
+<script src="bb-dreams.js"></script>
 <script src="bb-corpus-builder.js"></script>
 <script src="bb-music.js"></script>
 </head>
@@ -1246,7 +1247,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-09-vision";
+  const BUILD = "2026-09-09-learn";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7318,6 +7319,41 @@ Rules:
         note: "Nothing durable to anchor to yet — didn't dream on it." });
       return;
     }
+    /* LEARNING THE SHAPE FROM REAL ONES.
+
+       Left alone, a model writes what it thinks a dream is: symbols,
+       significance, a tidy arc. Real dreams are not like that. They change
+       location without noticing, name people who are also other people,
+       report the mundane at length and the impossible in passing, and stop
+       without resolving.
+
+       So it is shown two real dreams that carry the same texture as this
+       pair \u2014 not to borrow from, but to see how one actually moves. Form
+       only; the content is explicitly off limits. */
+    let shape = "";
+    try {
+      if (global.BB_DREAMS && global.BB_DREAMS.length && typeof BBLens !== "undefined"
+          && pair.senses && pair.senses.length) {
+        const sig = { modes: { all: pair.senses.slice() } };
+        const near = [];
+        BB_DREAMS.forEach(function (d) {
+          const t = BBLens._textureScore(sig, { modes: {}, text: d.text });
+          if (t.score > 0) near.push({ t: t.score, text: d.text });
+        });
+        near.sort(function (x, y) { return y.t - x.t; });
+        if (near.length) {
+          shape = "\n\nHere are real dreams people wrote down that carry this same "
+            + "texture. They are here so you can see how a dream actually moves \u2014 "
+            + "how it shifts without noticing, how flatly it reports the strange, "
+            + "how it stops. Do NOT borrow anything from them. Do not mention them. "
+            + "Take the shape, not the contents:\n\n"
+            + near.slice(0, 2).map(function (d) {
+                return "\u2014 " + d.text.slice(0, 420);
+              }).join("\n\n");
+        }
+      }
+    } catch (e) {}
+
     const texture = (pair.senses && pair.senses.length)
       ? " They also share the same sensory texture (" + pair.senses.join(", ")
         + "). That shared texture may be the point \u2014 look at it."
@@ -7417,7 +7453,7 @@ Rules:
         + "words themselves show otherwise. If a real connection is there, say it. If something "
         + "recurs and you cannot tell what it means, ask. If it is just two moments that happened "
         + "to look alike, return {} \u2014 that is the expected answer here more often than not."
-      : "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here." + texture;
+      : "They are about different things but they carried a similar feeling. That similarity is the only reason they are together here." + texture + shape;
 
     const system = "You are revisiting two moments from one person's conversations while they are away. "
       + framing + "\n\n"
