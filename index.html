@@ -1230,7 +1230,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-nofilters";
+  const BUILD = "2026-08-26-label";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -5766,6 +5766,121 @@ Rules:
     return fixed;
   }
   try { window.__bbRepair = () => repairCrossings(); } catch (e) {}
+
+  /* ============================================================
+     LABELLING WHAT CROSSED.
+
+     Five crossings tonight suggested that what travels is an emotional
+     SITUATION rather than a topic \u2014 often where each side stands relative
+     to a barrier. Held, hiding, opening, enduring, watching from outside.
+
+     Five readings by one person is a hypothesis. Hundreds of crossings are
+     already stored, and labelling them is what turns it into something
+     checkable.
+
+     Two rules make the labels worth having, and both are why this is a
+     separate pass rather than a field on the card:
+
+       LABEL BEFORE SEEING THE AXES. If the carrier is visible the reading
+       bends toward it, and then the result only says the axes predict
+       themselves.
+
+       ONE LABEL, FROM A FIXED SET. Free text cannot be counted.
+     ============================================================ */
+
+  const SITUATIONS = [
+    "holding something in",
+    "opening / letting go",
+    "hiding from something",
+    "enduring something",
+    "watching from outside",
+    "wanting what is gone",
+    "seeing or being seen",
+    "nothing / did not land",
+  ];
+
+  function labelCrossings() {
+    const all = (memory.episodes || [])
+      .filter(function (e) { return e.kind === "crossing"
+        && e.crossing && e.crossing.theirs && e.crossing.theirs.text
+        && !e.situation; });
+    if (!all.length) return "nothing left to label";
+
+    const list = document.getElementById("dreamList");
+    if (!list) return "open the journal first";
+    list.innerHTML = "";
+
+    let i = 0;
+    const step = function () {
+      if (i >= all.length) { renderDreams(); return; }
+      const e = all[i];
+      list.innerHTML = "";
+
+      const head = document.createElement("div");
+      head.className = "sub";
+      head.style.cssText = "font-size:12px;margin-bottom:10px";
+      head.textContent = "LABELLING  \u00b7  " + (i + 1) + " of " + all.length
+        + "  \u00b7  the axes are hidden on purpose";
+      list.appendChild(head);
+
+      const q = document.createElement("div");
+      q.className = "dream-line";
+      q.style.cssText = "font-size:14px;margin-bottom:12px";
+      q.textContent = "\u201c" + String(e.crossing.theirs.text).slice(0, 300) + "\u201d";
+      list.appendChild(q);
+
+      const ask = document.createElement("div");
+      ask.className = "sub";
+      ask.style.cssText = "font-size:12px;margin-bottom:6px";
+      ask.textContent = "What situation is this? Not what it is about.";
+      list.appendChild(ask);
+
+      SITUATIONS.forEach(function (sit) {
+        const b = document.createElement("button");
+        b.textContent = sit;
+        b.style.cssText = "display:block;width:100%;text-align:left;font:inherit;"
+          + "font-size:13px;margin:4px 0;padding:8px 10px;border-radius:8px;"
+          + "border:1px solid var(--border);background:transparent;color:inherit;"
+          + "cursor:pointer";
+        b.onclick = function () {
+          try { e.situation = sit; e.situationAt = Date.now(); saveMemory(); } catch (err) {}
+          i++;
+          step();
+        };
+        list.appendChild(b);
+      });
+
+      const skip = document.createElement("button");
+      skip.className = "more-btn";
+      skip.style.cssText = "margin-top:10px;font-size:12px";
+      skip.textContent = "stop for now";
+      skip.onclick = function () { renderDreams(); };
+      list.appendChild(skip);
+    };
+    step();
+    return "labelling " + all.length;
+  }
+
+  /* Does it cluster? The whole question in one number. */
+  function situationCounts() {
+    const labelled = (memory.episodes || [])
+      .filter(function (e) { return e.kind === "crossing" && e.situation; });
+    const bySit = Object.create(null);
+    const byAxis = Object.create(null);
+    labelled.forEach(function (e) {
+      bySit[e.situation] = (bySit[e.situation] || 0) + 1;
+      (e.crossing.carrier || []).forEach(function (a) {
+        byAxis[a] = byAxis[a] || Object.create(null);
+        byAxis[a][e.situation] = (byAxis[a][e.situation] || 0) + 1;
+      });
+    });
+    return { labelled: labelled.length, situations: bySit, byAxis: byAxis };
+  }
+
+  try {
+    window.__bbLabel = labelCrossings;
+    window.__bbSituations = situationCounts;
+  } catch (e) {}
 
   function renderCrossings(list) {
     const all = (memory.episodes || [])
