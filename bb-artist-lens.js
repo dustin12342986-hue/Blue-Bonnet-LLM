@@ -1032,75 +1032,23 @@
     Object.keys(modes || {}).forEach(function (m) {
       (modes[m] || []).forEach(function (w) { pooled.push(w); });
     });
-    /* MENTION IS NOT QUALITY.
+    /* NO FILTERS. THE ALGORITHM DOES THE WORK.
 
-       Reading axes off the words catches the word however it is used. "It
-       may be soft, but wait till you've heard it" is a passage ABOUT
-       softness, not a soft passage \u2014 and it crossed on `soft`. So did a
-       political sentence promising a nation a bright future.
+       There were rules here: a word named as a subject was dropped, a word
+       attached to an abstract noun was dropped, and there was a minimum
+       axis count and a density bar. Every one was a guess about what
+       counts as art, written by me, and I got the venue one wrong twice
+       before removing it.
 
-       A word being discussed sits in a small number of shapes: named as a
-       subject after a copula, quoted, defined, or preceded by a word that
-       marks it as a topic rather than a property. Those are dropped.
+       The score already judges: alignment carries, topic subtracts, and
+       the floor refuses. If something weak gets through, the floor is too
+       low \u2014 that is one dial, set from material, and it is the right place
+       for the judgement to live.
 
-       This cannot be perfect. A passage that genuinely IS soft and also
-       says the word will be dropped with the rest, and that loss is
-       accepted \u2014 a false crossing costs more than a missed one, because
-       the whole point is that they are rare. */
+       Read the words. Let the score decide. */
     if (text) {
-      const raw = String(text).toLowerCase();
-      const mentioned = Object.create(null);
-      // Same flaw as below: check every word, not just the axis names.
-      const ALLWORDS = [];
-      Object.keys(QUALITIES).forEach(function (k) {
-        QUALITIES[k].forEach(function (w) { if (ALLWORDS.indexOf(w) === -1) ALLWORDS.push(w); });
-      });
-      ALLWORDS.forEach(function (a) {
-        // "is soft", "was soft", "be soft", "seems soft", "call it soft"
-        const asSubject = new RegExp(
-          "\\b(is|are|was|were|be|been|being|seem|seems|seemed|"
-          + "call|called|calls|say|says|said|word|term|notion|idea)\\b"
-          + "[^.!?]{0,24}\\b" + a + "\\b");
-        // quoted or set off: 'soft', "soft", \u2018soft\u2019
-        const quoted = new RegExp("[\"'\u2018\u201c]\\s*" + a + "\\s*[\"'\u2019\u201d]");
-        if (asSubject.test(raw) || quoted.test(raw)) mentioned[a] = 1;
-      });
-      /* AN ABSTRACT USE IS NOT A SENSATION EITHER.
-
-         The mention filter catches a word named as a subject \u2014 "it may be
-         soft" \u2014 but not one describing an idea or a person. "A quiet and
-         sublime enthusiast" is about a man's character; "a bright future"
-         is about a nation. Neither is anything you could perceive, and both
-         were crossing.
-
-         A texture word attached to an abstract noun is doing metaphorical
-         work, not sensory work. Those are dropped, and it is the same
-         distinction as the topic term: aboutness is not quality. */
-      const ABSTRACT = "enthusiast|character|temper|spirit|mind|soul|genius|nature|"
-        + "manner|humour|humor|disposition|intellect|wit|judgment|judgement|"
-        + "future|prospect|hope|hopes|prospects|fortune|fortunes|days|times|age|"
-        + "reason|thought|thoughts|idea|ideas|truth|faith|cause|purpose|"
-        + "policy|power|influence|reputation|fame|honour|honor|virtue";
-      /* Keyed on the WORD, not the axis name. "Quiet" maps to the soft
-         axis, so checking for the word "soft" finds nothing in "a quiet
-         enthusiast" \u2014 the sentence never says soft. Every word in every
-         axis list has to be checked on its own. */
-      const abstractUse = Object.create(null);
-      Object.keys(QUALITIES).forEach(function (a) {
-        QUALITIES[a].forEach(function (word) {
-          // "a quiet enthusiast", "a bright future", "the dark days"
-          const before = new RegExp("\\b" + word + "\\b[^.!?]{0,20}?\\b(" + ABSTRACT + ")\\b");
-          // "an enthusiast, quiet and sublime"
-          const after = new RegExp("\\b(" + ABSTRACT + ")\\b[^.!?]{0,20}?\\b" + word + "\\b");
-          if (before.test(raw) || after.test(raw)) abstractUse[word] = 1;
-        });
-      });
-
-      raw.split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
-        if (!w) return;
-        if (mentioned[w]) return;      // discussed, not embodied
-        if (abstractUse[w]) return;    // metaphorical, not perceptual
-        pooled.push(w);
+      String(text).toLowerCase().split(/[^a-z\u00e0-\u00ff]+/).forEach(function (w) {
+        if (w) pooled.push(w);
       });
     }
     if (!pooled.length) return null;

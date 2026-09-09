@@ -75,21 +75,8 @@
       const s = sentence.trim();
       if (s.length < 60 || s.length > 400) return;
 
-      /* Front matter is not writing. A Wikisource page opens with
-         publication data, and the first pull for "Walden" returned
-         "Walden (1893), Boston and New York: Houghton Mifflin Company."
-         \u2014 a real sentence from a real page and completely useless as a
-         passage. These are the shapes that give it away. */
-      if (/\b(?:published|publisher|copyright|edition|reprinted|vol\.|pp?\.|ISBN)\b/i.test(s)) return;
-      if (/\b(?:Company|Press|Sons|Brothers|Publishing|Publishers|Ltd|Inc)\b/.test(s)) return;
-      if (/\b1[6-9]\d{2}\b.*[:,].*[A-Z][a-z]+ (?:and|&) [A-Z]/.test(s)) return;
-      if (/^[A-Z][a-z]+ \(1[6-9]\d{2}\)/.test(s)) return;
-      // A sentence that is mostly capitals or numbers is a heading or an index.
-      const words = s.split(/\s+/);
-      const caps = words.filter(function (w) { return /^[A-Z]/.test(w); }).length;
-      if (caps / words.length > 0.5) return;
-      // Prose has verbs and small words. A list of names does not.
-      if (!/\b(?:the|a|of|and|is|was|were|to|in|it|that|with|as|for)\b/i.test(s)) return;
+      /* No rules here either. The score judges what a passage is worth,
+         and a rule about what a sentence looks like is one more guess. */
       out.push({ text: s, source: title, cite: url, sourcing: "live", lang: "en" });
     });
     return out;
@@ -149,11 +136,31 @@
 
   /* Excluded by name, because a category alone does not keep them out \u2014
      a magazine can be filed under Short stories and still be a magazine. */
-  const NOT_ART = new RegExp(
-    "\\b(magazine|periodical|journal|gazette|bulletin|annual report|"
-    + "proceedings|transactions|almanac|directory|catalogue|encyclop|"
-    + "dictionary|handbook|manual|digest|business|commerce|statistics|"
-    + "census|hansard|congressional|patent|advertis|obituar)\\b", "i");
+  /* JUDGE THE WRITING, NOT THE VENUE.
+
+     Excluding "magazine" and "journal" by title was a proxy for quality and
+     a bad one \u2014 it would have thrown away a passage describing the sea
+     "like the rustle of one turning in his sleep" because of where it was
+     printed. Great writing appeared in magazines for two centuries.
+
+     What stays excluded is what is never art in any venue: statutes,
+     censuses, directories, patents. Everything else is judged on the
+     writing itself, which the axis count and density already do. */
+  /* There is no venue filter.
+
+     There was one, blocking anything whose title said magazine or journal,
+     and it was wrong twice over: it only covered one of the two places
+     pages are pulled, and it would have thrown away
+
+       "the soft sound of the sea, like the rustle of one turning in his
+        sleep... the earth was not sleeping but only lying still"
+
+     which is art, and which a magazine printed. Where a thing appeared
+     says nothing about whether it is art.
+
+     The axis count and the density already measure the writing itself.
+     That is the right judge, and it is the only one. */
+
   /* ============================================================
      THE POOL GROWS. IT DOES NOT RESET.
 
@@ -226,9 +233,6 @@
       const rev = pg.revisions && pg.revisions[0];
       const slot = rev && rev.slots && rev.slots.main;
       const wikitext = (slot && slot["*"]) || (rev && rev["*"]) || "";
-      // A category alone does not keep a magazine out \u2014 one can be filed
-      // under Short stories and still be a magazine.
-      if (NOT_ART.test(String(pg.title || ""))) return;
       all = all.concat(passagesFrom(stripWikitext(wikitext), pg.title,
         "https://en.wikisource.org/?curid=" + id));
     });
