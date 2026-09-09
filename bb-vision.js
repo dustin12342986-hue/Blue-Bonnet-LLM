@@ -92,6 +92,36 @@
   /* Edge density: how much the image changes pixel to pixel. A smooth
      gradient is near zero; visible brushwork or fine detail is high. This
      is the visual counterpart of spectral flux in the audio lens. */
+  /* WHERE THE LIGHT SITS \u2014 the vertical centroid.
+
+     high and low were left out of this module with a note that region
+     analysis "would need guessing". It does not. The audio lens gets
+     high/low from the spectral centroid: where the energy sits across the
+     frequency range. The same measurement exists here \u2014 where the light
+     sits across the height of the frame \u2014 and it is the same operation, not
+     an inference.
+
+     Without it a painting could never carry high or low, so a track
+     measuring "high, bright" could never fully reach one. Eight axes on one
+     side and ten on the other is not the same instrument. */
+  function lightCentroid(img) {
+    const d = img.data, w = img.width, h = img.height;
+    let sum = 0, weighted = 0;
+    for (let y = 0; y < h; y++) {
+      let row = 0;
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        // luminance, same weighting as stats()
+        row += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+      }
+      sum += row;
+      weighted += (y / (h - 1 || 1)) * row;
+    }
+    if (!sum) return 0.5;
+    // 0 = light all at the top, 1 = all at the bottom
+    return weighted / sum;
+  }
+
   function edgeDensity(img, step) {
     const d = img.data, w = img.width, h = img.height;
     step = step || Math.max(1, Math.floor(Math.sqrt((w * h) / 20000)));
@@ -123,6 +153,10 @@
     softEdge:   0.022,
     tenseRange: 0.80,
     releasedSd: 0.11,
+    /* A third of the way in from either edge. Symmetrical, so a frame with
+       its light evenly spread reads as neither high nor low. */
+    highCentroid: 0.42,
+    lowCentroid: 0.58,
   };
 
   /**
@@ -147,8 +181,12 @@
     if (s.range >= T.tenseRange && s.contrast >= 0.2) out.push("tense");
     else if (s.contrast <= T.releasedSd) out.push("released");
 
-    // High and low as vertical position of the bright mass would need
-    // region analysis; not claimed here rather than guessed at.
+    // Where the light sits in the frame, the way the audio lens reads where
+    // the energy sits in the spectrum.
+    const c = lightCentroid(img);
+    if (c <= T.highCentroid) out.push("high");
+    else if (c >= T.lowCentroid) out.push("low");
+
     return out;
   }
 
@@ -157,6 +195,7 @@
     if (!s) return null;
     return Object.assign({}, s, {
       edgeDensity: edgeDensity(img),
+      lightCentroid: lightCentroid(img),
       qualities: qualitiesOfImage(img),
     });
   }
@@ -190,6 +229,7 @@
 
   global.BBVision = {
     qualitiesOfImage: qualitiesOfImage,
+    lightCentroid: lightCentroid,
     measureImage: measureImage,
     fromURL: fromURL,
     THRESHOLDS: T,
