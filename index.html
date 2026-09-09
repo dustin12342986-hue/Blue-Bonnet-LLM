@@ -506,7 +506,38 @@
   // script throws on a particular device, install support still works —
   // Chrome won't offer to install without an active service worker.
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(function () {});
+    /* A worker that outlives its replacement is worse than no worker.
+
+       The old one pinned a phone to the 2026-08-25 build and kept serving
+       it through uploads, reloads and a cache clear. So: register, then
+       force an update check on every load, and take the new worker
+       immediately rather than waiting for every tab to close. */
+    navigator.serviceWorker.register("./sw.js").then(function (reg) {
+      try { reg.update(); } catch (e) {}
+      // A new worker waiting behind an old one is exactly the stuck case.
+      if (reg.waiting) reg.waiting.postMessage({ type: "skipWaiting" });
+      reg.addEventListener("updatefound", function () {
+        const w = reg.installing;
+        if (!w) return;
+        w.addEventListener("statechange", function () {
+          if (w.state === "installed" && navigator.serviceWorker.controller) {
+            location.reload();   // the new build is ready; use it now
+          }
+        });
+      });
+    }).catch(function () {});
+
+    /* Last resort, from the console or a button:
+       __bbNuke() drops every cache and unregisters, then reloads. */
+    try {
+      window.__bbNuke = function () {
+        return navigator.serviceWorker.getRegistrations()
+          .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+          .then(function () { return caches.keys(); })
+          .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+          .then(function () { location.replace(location.pathname + "?fresh=" + Date.now()); });
+      };
+    } catch (e) {}
   }
 
   // Surface any startup error visibly instead of failing silently —
@@ -1230,7 +1261,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-08-26-label";
+  const BUILD = "2026-09-09-swfix";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -2331,11 +2362,34 @@ BOUNDARIES
     const theirText = (c.theirs && c.theirs.text) || "";
     if (!mineText || !theirText) return null;
 
+    /* Read the work before asking about it.
+
+       The crossing was made blind \u2014 texture only, subject subtracted \u2014 and
+       that must not change. But once it is made, the page the passage came
+       from can be fetched, so the question is written by something that
+       knows Mustapha is about to be destroyed rather than by something
+       looking at one sentence.
+
+       Pair first, understand second. Which is what a dream does. */
+    let context = null;
+    if (typeof BBTexts !== "undefined" && BBTexts.contextFor && c.theirs.cite) {
+      try {
+        context = await BBTexts.contextFor(c.theirs.cite, theirText);
+        if (context) {
+          c.theirs.context = String(context.around).slice(0, 1600);
+          saveMemory();
+        }
+      } catch (e) {}
+    }
+
     const prompt =
       "Two unrelated things met.\n\n"
       + "ONE: " + mineText.slice(0, 400) + "\n\n"
       + "THE OTHER: \u201c" + theirText.slice(0, 400) + "\u201d"
       + ((c.theirs && c.theirs.source) ? "\n\u2014 " + c.theirs.source : "")
+      + (context ? "\n\nWhat surrounds it in the work it came from, so you know "
+          + "what is happening there. Do not summarise this back to them:\n"
+          + String(context.around).slice(0, 1400) : "")
       + "\n\nWhat carried between them: " + ((c.carrier || []).join(", ") || "texture")
       + ".\n\nThese are about different things and that is the point. Do NOT "
       + "explain what the connection means, do NOT tell them what to feel, and "
@@ -5828,6 +5882,19 @@ Rules:
       q.style.cssText = "font-size:14px;margin-bottom:12px";
       q.textContent = "\u201c" + String(e.crossing.theirs.text).slice(0, 300) + "\u201d";
       list.appendChild(q);
+
+      /* The work around it, when it was fetched. One sentence out of a
+         story is often not enough to see a situation in \u2014 the bright eyes
+         and the skin soft as brown silk say nothing about a young man
+         being destroyed by the thing he wanted. */
+      if (e.crossing.theirs.context) {
+        const ctx = document.createElement("div");
+        ctx.className = "dream-line dim";
+        ctx.style.cssText = "font-size:12px;margin-bottom:12px;max-height:180px;"
+          + "overflow:auto;padding-left:10px;border-left:2px solid var(--border)";
+        ctx.textContent = String(e.crossing.theirs.context).slice(0, 1200);
+        list.appendChild(ctx);
+      }
 
       const ask = document.createElement("div");
       ask.className = "sub";
