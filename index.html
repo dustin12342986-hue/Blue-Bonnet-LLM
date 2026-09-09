@@ -505,30 +505,15 @@
   // Registered first, before any other init. If something later in this
   // script throws on a particular device, install support still works —
   // Chrome won't offer to install without an active service worker.
+  /* NO SERVICE WORKER.
+
+     One pinned a phone to a three-week-old build and served it through
+     every upload, reload and cache clear. Offline support is not worth
+     that. sw.js is now a kill switch that unregisters itself; this
+     registers it once so any existing worker gets replaced and removed,
+     and after that there is nothing to go wrong. */
   if ("serviceWorker" in navigator) {
-    /* A worker that outlives its replacement is worse than no worker.
-
-       The old one pinned a phone to the 2026-08-25 build and kept serving
-       it through uploads, reloads and a cache clear. So: register, then
-       force an update check on every load, and take the new worker
-       immediately rather than waiting for every tab to close. */
-    navigator.serviceWorker.register("./sw.js").then(function (reg) {
-      try { reg.update(); } catch (e) {}
-      // A new worker waiting behind an old one is exactly the stuck case.
-      if (reg.waiting) reg.waiting.postMessage({ type: "skipWaiting" });
-      reg.addEventListener("updatefound", function () {
-        const w = reg.installing;
-        if (!w) return;
-        w.addEventListener("statechange", function () {
-          if (w.state === "installed" && navigator.serviceWorker.controller) {
-            location.reload();   // the new build is ready; use it now
-          }
-        });
-      });
-    }).catch(function () {});
-
-    /* Last resort, from the console or a button:
-       __bbNuke() drops every cache and unregisters, then reloads. */
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
     try {
       window.__bbNuke = function () {
         return navigator.serviceWorker.getRegistrations()
@@ -1261,7 +1246,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-09-swfix";
+  const BUILD = "2026-09-09-noworker";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.

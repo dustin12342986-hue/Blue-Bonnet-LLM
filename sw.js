@@ -1,58 +1,33 @@
-/* sw.js — network first, always.
+/* sw.js — a kill switch, not a cache.
  *
- * The previous worker pinned a phone to the 2026-08-25 build and kept
- * serving it after every upload, every reload, and a cache clear. A cached
- * copy that outlives its replacement is worse than no cache at all.
+ * The previous worker pinned a phone to the 2026-08-25 build and served it
+ * through uploads, reloads and cache clears, because a service worker
+ * intercepts the request before any of that matters. A 404 on a URL with a
+ * query string was the proof: only an intercepting worker does that.
  *
- * So: every request goes to the network first. The cache is only ever a
- * fallback for being offline, and it is rewritten on every successful
- * fetch. There is no path here that can serve a stale page while a newer
- * one exists.
+ * Chrome's own guidance for a stuck worker is to deploy a no-op that
+ * removes itself. This is that. It caches nothing, serves nothing, and
+ * unregisters on activation. The app does not need offline support badly
+ * enough to risk this happening again.
  */
 
-const CACHE = "bb-net-first-v3";
-
-self.addEventListener("install", (e) => {
-  // Take over immediately rather than waiting for every tab to close.
-  self.skipWaiting();
-});
+self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
-    // Drop every cache the old worker left behind.
+    // Every cache the old worker left, gone.
     const names = await caches.keys();
-    await Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n)));
-    await self.clients.claim();
+    await Promise.all(names.map((n) => caches.delete(n)));
+
+    // Then remove itself.
+    await self.registration.unregister();
+
+    // And reload whatever it was controlling, so the page comes from the
+    // network on the way out rather than one more time from the cache.
+    const clients = await self.clients.matchAll({ type: "window" });
+    clients.forEach((c) => c.navigate(c.url));
   })());
 });
 
-self.addEventListener("fetch", (e) => {
-  const req = e.request;
-  if (req.method !== "GET") return;
-
-  e.respondWith((async () => {
-    try {
-      // Network first, and cache-busted so no intermediate can hold a copy.
-      const fresh = await fetch(req, { cache: "no-store" });
-      if (fresh && fresh.ok) {
-        const c = await caches.open(CACHE);
-        c.put(req, fresh.clone());
-      }
-      return fresh;
-    } catch (err) {
-      // Offline only.
-      const hit = await caches.match(req);
-      if (hit) return hit;
-      throw err;
-    }
-  })());
-});
-
-/* An escape hatch, in case a future worker does the same thing:
-   the page can post {type:"nuke"} and every cache is dropped. */
-self.addEventListener("message", (e) => {
-  if (e.data && e.data.type === "nuke") {
-    caches.keys().then((ns) => Promise.all(ns.map((n) => caches.delete(n))))
-      .then(() => self.registration.unregister());
-  }
-});
+/* No fetch handler. Nothing is intercepted. Every request goes straight to
+   the network exactly as it would with no worker at all. */
