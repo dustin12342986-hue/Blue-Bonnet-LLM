@@ -125,13 +125,22 @@
 
      Poetry first, because it is the densest sensory writing there is, then
      literary prose. Nothing periodical, nothing archival. */
+  /* The categories that actually return pages.
+
+     These were narrowed to Sonnets, Elegies, Odes, Lyric_poetry,
+     Narrative_poetry, Romances, Fables and Myths in an attempt to keep the
+     far end to art. Most of those are not Wikisource categories, so the
+     pull came back nearly empty, the pool never filled, and the only thing
+     left to cross with was the corpus.
+
+     Judging the writing is the score's job, not the category list's. */
   const PERCEPTUAL = [
-    "incategory:Poems", "incategory:Poetry", "incategory:Sonnets",
-    "incategory:Ballads", "incategory:Elegies", "incategory:Odes",
-    "incategory:Lyric_poetry", "incategory:Narrative_poetry",
-    "incategory:Novels", "incategory:Short_stories", "incategory:Fairy_tales",
-    "incategory:Ghost_stories", "incategory:Sea_stories",
-    "incategory:Romances", "incategory:Fables", "incategory:Myths",
+    "incategory:Poems", "incategory:Poetry", "incategory:Nature",
+    "incategory:Travel_literature", "incategory:Essays", "incategory:Letters",
+    "incategory:Diaries", "incategory:Novels", "incategory:Short_stories",
+    "incategory:Autobiographies", "incategory:Sea_stories",
+    "incategory:Ghost_stories", "incategory:Fairy_tales",
+    "incategory:Plays", "incategory:Speeches", "incategory:Sketches",
   ];
 
   /* Excluded by name, because a category alone does not keep them out \u2014
@@ -197,6 +206,46 @@
       cut.forEach(function (p) { delete poolSeen[p.text]; });
     }
     return added;
+  }
+
+  /* THE WORK AROUND THE SENTENCE.
+
+     The lens crosses on one sentence and the rest of the page is thrown
+     away. So a passage arrives with no idea that Mustapha is a young man
+     about to be destroyed by the thing he wanted, or that the man in the
+     sail-locker is hiding from police three feet away.
+
+     The lens must stay blind \u2014 it measures texture and subtracts subject,
+     and giving it the work would be giving it the subject back. But
+     AFTERWARDS, once a crossing has already been made, the surrounding
+     text can be fetched. Blind selection, informed reading.
+
+     That is what a dream does: pair first, understand second. */
+  async function contextFor(cite, text) {
+    const m = String(cite || "").match(/curid=(\d+)/);
+    if (!m) return null;
+    const url = API + "?action=query&format=json&origin=*&pageids=" + m[1]
+      + "&prop=revisions&rvprop=content&rvslots=main";
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const pages = (data.query && data.query.pages) || {};
+      const pg = pages[m[1]];
+      if (!pg) return null;
+      const rev = pg.revisions && pg.revisions[0];
+      const slot = rev && rev.slots && rev.slots.main;
+      const prose = stripWikitext((slot && slot["*"]) || (rev && rev["*"]) || "");
+      if (!prose) return null;
+
+      // The passage in its place: what leads up to it and what follows.
+      const key = String(text || "").slice(0, 60);
+      const at = prose.indexOf(key);
+      const around = (at === -1)
+        ? prose.slice(0, 1200)
+        : prose.slice(Math.max(0, at - 700), at + 900);
+      return { title: pg.title, around: around };
+    } catch (e) { return null; }
   }
 
   function poolSize() { return pool.length; }
@@ -462,6 +511,7 @@
     find: find,
     wide: wide,
     poolSize: poolSize,
+    contextFor: contextFor,
     clearPool: clearPool,
     CONCURRENCY: CONCURRENCY,
     POOL_MAX: POOL_MAX,
