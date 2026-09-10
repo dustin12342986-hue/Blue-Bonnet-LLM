@@ -219,7 +219,7 @@
     if (cNorm >= 0.20) q.push("high"); else if (cNorm <= 0.04) q.push("low");
     var activity = Math.min(1, spread*2*0.5 + fl*20*0.5);
     if (activity >= 0.5) q.push("tense"); else if (activity <= 0.2) q.push("released");
-    return { modes: { all: q.length ? q : ["soft"] } };
+    return { modes: { sound: q.length ? q : ["soft"] } };
   }
 
   /* ---- the crossing: each real relationship crosses SEPARATELY into the
@@ -285,8 +285,8 @@
     var r = read(samples, sampleRate, opts);
     if (typeof BBLens !== "undefined" && typeof BBLens.anyLens === "function" && r.songSig) {
       try {
-        var hit = await BBLens.anyLens(r.songSig, { valence: 0, arousal: 0.3 },
-                                       { allowSmallCorpus: true });
+        var hit = await BBLens.anyLens(r.songSig, { valence: 0.3, arousal: 0.5 },
+                                       { allowSmallCorpus: true, pages: 20, canvases: 8 });
         r.crossing = hit ? {
           from: hit.from,
           source: (hit.entry && (hit.entry.source || hit.entry.artist)) || null,
