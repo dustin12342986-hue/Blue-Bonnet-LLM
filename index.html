@@ -257,6 +257,7 @@
 <script src="bb-texts.js"></script>
 <script src="bb-dreams.js"></script>
 <script src="bb-intervals.js"></script>
+<script src="bb-music-lens.js"></script>
 <script src="bb-corpus-builder.js"></script>
 <script src="bb-music.js"></script>
 </head>
@@ -279,6 +280,9 @@
     </button>
     <button id="intervalsBtn" title="Interval lens — the harmonics in a sound">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><path d="M9 9l12-2"/><path d="M9 13l12-2"/></svg>
+    </button>
+    <button id="understandingBtn" title="Understanding — the real relationships in music, crossed">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M9.5 10.5L6.5 7.5M14.5 10.5l3-3M9.5 13.5l-3 3M14.5 13.5l3 3"/></svg>
     </button>
     <button id="chatsBtn" title="Past chats">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -303,6 +307,26 @@
         <button id="intStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
       </div>
       <div id="intReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:120px;"></div>
+    </div>
+  </div>
+
+  <div id="understandingPanel" style="display:none;position:absolute;inset:0;background:var(--bg,#0d0d0f);z-index:50;overflow:auto;padding:24px;">
+    <div style="max-width:680px;margin:0 auto;">
+      <h2 style="font-size:16px;letter-spacing:.03em;">UNDERSTANDING</h2>
+      <p style="color:var(--muted,#888);font-size:12px;line-height:1.5;">
+        Runs every geometry on the music at once — the intervals, the difference
+        tones, the beats, the melody — and finds, by subtraction, the real
+        relationships it carries. A relationship is kept only if it sits at the
+        center: a true consonance between the poles of unison and noise. Each
+        real relationship is then crossed, on its own, into the corpus and the
+        dreams. Nothing is summed. The meaning stays with you.
+      </p>
+      <div style="display:flex;gap:8px;margin:16px 0;">
+        <button id="undMicBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
+        <button id="undTabBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
+        <button id="undStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
+      </div>
+      <div id="undReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:160px;"></div>
     </div>
   </div>
 
@@ -1269,7 +1293,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-09-intervaltab";
+  const BUILD = "2026-09-10-understanding";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7852,6 +7876,105 @@ Rules:
   if (mic) mic.addEventListener("click", function () { start("mic"); });
   if (tab) tab.addEventListener("click", function () { start("tab"); });
   if (stop) stop.addEventListener("click", function () { if (session) { session.stop(); session = null; } out.textContent = "stopped"; });
+})();
+</script>
+<script>
+(function () {
+  var panel = document.getElementById("understandingPanel");
+  var btn = document.getElementById("understandingBtn");
+  var out = document.getElementById("undReading");
+  if (!panel || !btn) return;
+  var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
+
+  function show() { panel.style.display = "block"; }
+  function hide() { panel.style.display = "none"; stopCapture(); }
+  btn.addEventListener("click", function () {
+    if (panel.style.display === "block") hide(); else show();
+  });
+
+  function render(r) {
+    if (!r) { out.textContent = "listening..."; return; }
+    if (r.error) { out.textContent = r.error; return; }
+    var lines = [];
+    lines.push(r.note || "");
+    if (r.voices && r.voices.length) {
+      lines.push("\nvoices: " + r.voices.map(function(v){return Math.round(v.freq)+"Hz";}).join("  "));
+    }
+    if (r.real && r.real.length) {
+      lines.push("\nreal relationships (sit at center):");
+      r.real.forEach(function (rel) {
+        lines.push("  " + rel.between.join("\u2013") + "Hz   " + rel.interval.cents + "c   diff-tone " + rel.differenceTone + "Hz");
+      });
+    }
+    if (r.crossings && r.crossings.length) {
+      lines.push("\nwhat the relationships cross to:");
+      r.crossings.forEach(function (c) {
+        (c.crossings || []).forEach(function (x) {
+          lines.push("  \u2192 " + x.from + ": " + (x.source ? x.source + " \u2014 " : "") + "\u201c" + (x.text||"").slice(0,110) + "\u2026\u201d");
+        });
+      });
+    }
+    if (r.melody && r.melody.length) {
+      lines.push("\nmelody (motion over time): " + r.melody.length + " steps");
+    }
+    out.textContent = lines.join("\n");
+  }
+
+  function process(samples, sampleRate) {
+    if (typeof BBMusicLens === "undefined") { out.textContent = "music lens not loaded"; return; }
+    try {
+      var r = BBMusicLens.read(samples, sampleRate, {
+        cross: true, fullSamples: samples, fullSampleRate: sampleRate, windows: 8, maxVoices: 8
+      });
+      render(r);
+    } catch (e) { out.textContent = String(e && e.message || e); }
+  }
+
+  function startCapture(kind) {
+    stopCapture();
+    stopped = false;
+    out.textContent = "listening...";
+    var getMedia = kind === "tab"
+      ? navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+      : navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
+    getMedia.then(function (s) {
+      if (stopped) { s.getTracks().forEach(function(t){t.stop();}); return; }
+      if (kind === "tab") { s.getVideoTracks().forEach(function(t){t.stop();}); }
+      stream = s;
+      var audioStream = kind === "tab" ? new MediaStream(s.getAudioTracks()) : s;
+      if (kind === "tab" && !audioStream.getAudioTracks().length) { out.textContent = "no tab audio \u2014 tick 'share tab audio'"; return; }
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      source = ctx.createMediaStreamSource(audioStream);
+      proc = ctx.createScriptProcessor(4096, 1, 1);
+      var need = Math.floor(ctx.sampleRate * 3);
+      source.connect(proc); proc.connect(ctx.destination);
+      proc.onaudioprocess = function (e) {
+        if (stopped) return;
+        var chunk = e.inputBuffer.getChannelData(0);
+        for (var i = 0; i < chunk.length; i++) buf.push(chunk[i]);
+        if (buf.length >= need) {
+          var samples = Float64Array.from(buf.slice(0, need));
+          buf = [];
+          process(samples, ctx.sampleRate);
+        }
+      };
+    }).catch(function (err) { out.textContent = String(err && err.message || err); });
+  }
+  function stopCapture() {
+    stopped = true; buf = [];
+    try { if (proc) proc.disconnect(); } catch(e){}
+    try { if (source) source.disconnect(); } catch(e){}
+    try { if (ctx) ctx.close(); } catch(e){}
+    try { if (stream) stream.getTracks().forEach(function(t){t.stop();}); } catch(e){}
+    ctx = source = proc = stream = null;
+  }
+
+  var mic = document.getElementById("undMicBtn");
+  var tab = document.getElementById("undTabBtn");
+  var stop = document.getElementById("undStopBtn");
+  if (mic) mic.addEventListener("click", function(){ startCapture("mic"); });
+  if (tab) tab.addEventListener("click", function(){ startCapture("tab"); });
+  if (stop) stop.addEventListener("click", function(){ stopCapture(); out.textContent = "stopped"; });
 })();
 </script>
 </body>
