@@ -327,7 +327,9 @@
         <button id="undFreezeBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Freeze</button>
         <button id="undStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
       </div>
+      <div id="undLive" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;color:var(--muted,#999);border:1px solid var(--line,#333);border-radius:8px;padding:12px;margin-bottom:12px;min-height:90px;background:var(--card,#141418);"></div>
       <button id="undClearBtn" style="margin-bottom:10px;padding:6px 12px;border-radius:6px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;font-size:12px;">Clear log</button>
+      <div style="font-size:11px;color:var(--muted,#666);margin-bottom:6px;letter-spacing:.05em;">CROSSINGS (held)</div>
       <div id="undReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:160px;"></div>
     </div>
   </div>
@@ -1295,7 +1297,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-10-understanding2";
+  const BUILD = "2026-09-10-understanding3";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7898,10 +7900,30 @@ Rules:
   var seen = {};       // dedupe by text so the same crossing does not repeat
   var frozen = false;
 
+  var live = document.getElementById("undLive");
   function render(r) {
     if (frozen) return;
     if (!r) return;
-    if (r.error) { out.textContent = r.error; return; }
+    if (r.error) { if(live) live.textContent = r.error; return; }
+    // LIVE measurements — the full reading of this window
+    if (live) {
+      var L = [];
+      L.push("voices:  " + (r.voices||[]).map(function(v){return Math.round(v.freq)+"Hz";}).join("  "));
+      L.push(r.note || "");
+      if (r.real && r.real.length) {
+        L.push("");
+        r.real.forEach(function(rel){
+          L.push("  " + rel.between.join("\u2013") + "Hz   " + rel.interval.cents + "c   diff-tone " + rel.differenceTone + "Hz"
+            + (rel.beats ? "   beats " + rel.beats + "Hz" : ""));
+        });
+      }
+      if (r.melody && r.melody.length) {
+        var realSteps = r.melody.filter(function(m){return m.real;}).length;
+        L.push("\nmelody: " + r.melody.length + " steps (" + realSteps + " land on real intervals)");
+        L.push("  " + r.melody.map(function(m){return m.cents+"c";}).join(" \u2192 "));
+      }
+      live.textContent = L.join("\n");
+    }
     // gather this window's crossings and ADD any new ones to the held log
     var added = 0;
     if (r.crossings && r.crossings.length) {
@@ -7992,7 +8014,7 @@ Rules:
     frozen = !frozen; freeze.textContent = frozen ? "Unfreeze" : "Freeze";
     freeze.style.color = frozen ? "var(--accent,#e0a458)" : "var(--muted,#888)";
   });
-  if (clear) clear.addEventListener("click", function(){ log = []; seen = {}; out.textContent = "cleared"; });
+  if (clear) clear.addEventListener("click", function(){ log = []; seen = {}; out.textContent = "cleared"; if(live) live.textContent=""; });
 })();
 </script>
 </body>
