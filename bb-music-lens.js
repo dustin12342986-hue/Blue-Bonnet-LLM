@@ -192,39 +192,38 @@
     if (rel.differenceTone && rel.differenceTone < 100) axes.push("low");
     var relAxes = axes.length ? axes : ["released"];
     var sig = { modes: { all: relAxes } };
-
-    /* Subtract, and what is left after the floor is the crossing.
-       Exactly as the original lens works: subtract (align - topic); if what
-       remains clears the floor, something remained \u2014 a real relationship. If
-       it does not clear the floor, nothing remained, it subtracted to nothing.
-       The floor is not a selection. The floor is the line between "something
-       remained" and "nothing remained." We read what is left, the same way
-       the original lens does. */
     var FLOOR = (typeof BBLens.SIGNATURE_FLOOR === "number") ? BBLens.SIGNATURE_FLOOR : 0.6;
 
-    function whatRemains(text) {
-      var t = BBLens._textureScore(sig, { modes: {}, text: text });
-      if (!t || t.sameSubject) return null;
-      // what is left after subtraction is what cleared the floor
-      return (t.align >= FLOOR) ? (t.shared || []) : null;
+    /* Works exactly like the original lens (anyLens): subtract every
+       candidate (align - topic), keep those that clear the floor, sort by
+       what remained, return the strongest. The floor refuses almost
+       everything; among what clears it, the one where the most remained is
+       the crossing. Different relationships clear the floor against
+       different candidates and leave different amounts, so the strongest
+       changes with the input \u2014 which is why the original varies. */
+    function strongest(list, getText, getMeta) {
+      var found = [];
+      for (var i = 0; i < list.length; i++) {
+        var t = BBLens._textureScore(sig, { modes: {}, text: getText(list[i]) });
+        if (t && !t.sameSubject && t.align >= FLOOR) {
+          found.push({ score: t.total, remained: t.shared || [], item: list[i] });
+        }
+      }
+      if (!found.length) return null;
+      found.sort(function (a, b) { return b.score - a.score; });   // strongest remainder
+      return found[0];
     }
 
-    // corpus: the first far end where something remained after the floor
     try {
       var corpus = BBLens.corpus || [];
-      for (var ci = 0; ci < corpus.length; ci++) {
-        var r = whatRemains(corpus[ci].text);
-        if (r) { out.crossings.push({ from: "corpus", source: corpus[ci].source || corpus[ci].artist,
-                                      text: String(corpus[ci].text||"").slice(0,160), remained: r }); break; }
-      }
+      var c = strongest(corpus, function (e) { return e.text; });
+      if (c) out.crossings.push({ from: "corpus", source: c.item.source || c.item.artist,
+                                  text: String(c.item.text||"").slice(0,160), remained: c.remained });
     } catch (e) {}
-    // dreams: same
     if (typeof BB_DREAMS !== "undefined" && BB_DREAMS.length) {
       try {
-        for (var di = 0; di < BB_DREAMS.length; di++) {
-          var rd = whatRemains(BB_DREAMS[di].text);
-          if (rd) { out.crossings.push({ from: "dream", text: BB_DREAMS[di].text.slice(0,160), remained: rd }); break; }
-        }
+        var d = strongest(BB_DREAMS, function (e) { return e.text; });
+        if (d) out.crossings.push({ from: "dream", text: d.item.text.slice(0,160), remained: d.remained });
       } catch (e) {}
     }
     return out;
