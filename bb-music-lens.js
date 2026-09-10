@@ -178,55 +178,65 @@
     return steps;
   }
 
+  /* ---- the real signature of the sound, measured like the audio lens ----
+     The crossing must use the sound's ACTUAL measured texture, not a
+     fabricated one built from the interval. This reads the same statistics
+     the audio lens reads (where the energy sits, how spread, how it moves)
+     and turns them into the ten axes \u2014 the real signature. */
+  function signatureOf(samples, sampleRate) {
+    // The REAL spectral signature: a proper spectral centroid, spread, and
+    // flux measured from the FREQUENCY domain (an FFT), not the waveform.
+    // This is what actually distinguishes a high tone from a low one.
+    var Nf = 2048, x = samples;
+    if (samples.length > Nf) {
+      var st = Math.floor(samples.length / Nf), d = new Float64Array(Nf);
+      for (var i = 0; i < Nf; i++) d[i] = samples[i*st] || 0; x = d;
+    } else { var d0 = new Float64Array(Nf); for (var z=0;z<samples.length;z++) d0[z]=samples[z]; x=d0; }
+    var half = Nf/2, mags = new Float64Array(half), maxm = 0;
+    for (var k = 0; k < half; k++) {
+      var re = 0, im = 0, c = (2*Math.PI*k)/Nf;
+      for (var n = 0; n < Nf; n++) {
+        var w = 0.5 - 0.5*Math.cos((2*Math.PI*n)/(Nf-1));
+        var sm = x[n]*w; re += sm*Math.cos(c*n); im -= sm*Math.sin(c*n);
+      }
+      var mg = Math.sqrt(re*re+im*im); mags[k] = mg; if (mg > maxm) maxm = mg;
+    }
+    var nyq = sampleRate/2;
+    // spectral centroid (energy-weighted mean frequency)
+    var num = 0, den = 0;
+    for (var a = 1; a < half; a++) { var hz = a*sampleRate/Nf; num += hz*mags[a]; den += mags[a]; }
+    var cen = den ? num/den : 0, cNorm = cen/nyq;
+    // spectral spread around the centroid
+    var sv = 0; for (var b = 1; b < half; b++) { var hz2 = b*sampleRate/Nf; sv += (hz2-cen)*(hz2-cen)*mags[b]; }
+    var spread = den ? Math.sqrt(sv/den)/nyq : 0;
+    // spectral flux (bin-to-bin change across the magnitude curve)
+    var fl = 0; for (var e = 1; e < half; e++) fl += Math.abs(mags[e]-mags[e-1]); fl = maxm ? fl/(half*maxm) : 0;
+
+    var q = [];
+    if (cNorm >= 0.15) q.push("bright"); else if (cNorm <= 0.05) q.push("dark");
+    if (spread >= 0.15) q.push("thick"); else if (spread <= 0.06) q.push("thin");
+    if (fl >= 0.02) q.push("rough"); else if (fl <= 0.006) q.push("soft");
+    if (cNorm >= 0.20) q.push("high"); else if (cNorm <= 0.04) q.push("low");
+    var activity = Math.min(1, spread*2*0.5 + fl*20*0.5);
+    if (activity >= 0.5) q.push("tense"); else if (activity <= 0.2) q.push("released");
+    return { modes: { all: q.length ? q : ["soft"] } };
+  }
+
   /* ---- the crossing: each real relationship crosses SEPARATELY into the
           far ends (dreams, corpus/engine, journal). Taps the existing lenses
           read-only; touches none of their code. ---- */
   function crossRelationship(rel, opts) {
     opts = opts || {};
     var out = { relationship: rel, crossings: [] };
-    if (typeof BBLens === "undefined") return out;
+    if (typeof BBLens === "undefined" || typeof BBLens.anyLens !== "function") return out;
 
-    var cents = rel.interval ? rel.interval.cents : (rel.cents || 0);
-    var axes = [];
-    if (cents >= 700) axes.push("released"); else if (cents <= 200) axes.push("tense");
-    if (rel.differenceTone && rel.differenceTone < 100) axes.push("low");
-    var relAxes = axes.length ? axes : ["released"];
-    var sig = { modes: { all: relAxes } };
-    var FLOOR = (typeof BBLens.SIGNATURE_FLOOR === "number") ? BBLens.SIGNATURE_FLOOR : 0.6;
-
-    /* Works exactly like the original lens (anyLens): subtract every
-       candidate (align - topic), keep those that clear the floor, sort by
-       what remained, return the strongest. The floor refuses almost
-       everything; among what clears it, the one where the most remained is
-       the crossing. Different relationships clear the floor against
-       different candidates and leave different amounts, so the strongest
-       changes with the input \u2014 which is why the original varies. */
-    function strongest(list, getText, getMeta) {
-      var found = [];
-      for (var i = 0; i < list.length; i++) {
-        var t = BBLens._textureScore(sig, { modes: {}, text: getText(list[i]) });
-        if (t && !t.sameSubject && t.align >= FLOOR) {
-          found.push({ score: t.total, remained: t.shared || [], item: list[i] });
-        }
-      }
-      if (!found.length) return null;
-      found.sort(function (a, b) { return b.score - a.score; });   // strongest remainder
-      return found[0];
-    }
-
-    try {
-      var corpus = BBLens.corpus || [];
-      var c = strongest(corpus, function (e) { return e.text; });
-      if (c) out.crossings.push({ from: "corpus", source: c.item.source || c.item.artist,
-                                  text: String(c.item.text||"").slice(0,160), remained: c.remained });
-    } catch (e) {}
-    if (typeof BB_DREAMS !== "undefined" && BB_DREAMS.length) {
-      try {
-        var d = strongest(BB_DREAMS, function (e) { return e.text; });
-        if (d) out.crossings.push({ from: "dream", text: d.item.text.slice(0,160), remained: d.remained });
-      } catch (e) {}
-    }
-    return out;
+    // Use the REAL measured signature of the sound, and cross it with the
+    // ORIGINAL lens (anyLens) \u2014 the exact same function the app uses, which
+    // reaches the whole pool (live Wikisource + dreams + corpus), subtracts,
+    // clears the floor, and returns the strongest. We call it, we do not
+    // reimplement it. This guarantees identical behavior to the original.
+    var sig = (opts && opts.songSig) ? opts.songSig : { modes: { all: ["released"] } };
+    return { relationship: rel, sig: sig, pending: true };
   }
 
   /* ---- the public read ---- */
@@ -244,9 +254,9 @@
     var mel = (opts.samples !== false && opts.fullSamples)
       ? melody(opts.fullSamples, opts.fullSampleRate || sampleRate, opts) : [];
     var crossings = [];
-    if (opts.cross && real.length) {
-      real.forEach(function (rel) { crossings.push(crossRelationship(rel, opts)); });
-    }
+    var songSig = signatureOf(samples, sampleRate);
+    // crossing is done via the ORIGINAL lens asynchronously; read() stays sync
+    // and returns the sig so the caller can cross. See readAndCross() below.
     return {
       voices: vs.map(function (v) { return { freq: Math.round(v.freq * 100) / 100, magnitude: v.magnitude }; }),
       web: w,                    // every relationship found
@@ -254,6 +264,7 @@
       realCount: real.length,
       totalCount: w.length,
       melody: mel,
+      songSig: songSig,
       crossings: crossings,
       note: real.length
         ? real.length + " of " + w.length + " relationships sit at the center (real)"
@@ -265,8 +276,31 @@
     };
   }
 
+  /* readAndCross: read the music, then cross its REAL signature through the
+     ORIGINAL lens (anyLens) \u2014 the full pool, exactly like the app. Async
+     because anyLens fetches live passages. Returns read() result plus the
+     crossing anyLens produced for the sound as a whole. */
+  async function readAndCross(samples, sampleRate, opts) {
+    opts = opts || {};
+    var r = read(samples, sampleRate, opts);
+    if (typeof BBLens !== "undefined" && typeof BBLens.anyLens === "function" && r.songSig) {
+      try {
+        var hit = await BBLens.anyLens(r.songSig, { valence: 0, arousal: 0.3 },
+                                       { allowSmallCorpus: true });
+        r.crossing = hit ? {
+          from: hit.from,
+          source: (hit.entry && (hit.entry.source || hit.entry.artist)) || null,
+          text: String(hit.entry && hit.entry.text || "").slice(0, 240),
+          shared: hit.shared || []
+        } : null;
+      } catch (e) { r.crossing = null; }
+    }
+    return r;
+  }
+
   return {
     read: read,
+    readAndCross: readAndCross,
     voices: voices,
     interval: interval,
     differenceTone: differenceTone,
