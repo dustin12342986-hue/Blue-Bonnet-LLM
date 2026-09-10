@@ -324,8 +324,10 @@
       <div style="display:flex;gap:8px;margin:16px 0;">
         <button id="undMicBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
         <button id="undTabBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
+        <button id="undFreezeBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Freeze</button>
         <button id="undStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
       </div>
+      <button id="undClearBtn" style="margin-bottom:10px;padding:6px 12px;border-radius:6px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;font-size:12px;">Clear log</button>
       <div id="undReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:160px;"></div>
     </div>
   </div>
@@ -1293,7 +1295,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-10-understanding";
+  const BUILD = "2026-09-10-understanding2";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7892,32 +7894,41 @@ Rules:
     if (panel.style.display === "block") hide(); else show();
   });
 
+  var log = [];        // accumulated crossings, held on screen
+  var seen = {};       // dedupe by text so the same crossing does not repeat
+  var frozen = false;
+
   function render(r) {
-    if (!r) { out.textContent = "listening..."; return; }
+    if (frozen) return;
+    if (!r) return;
     if (r.error) { out.textContent = r.error; return; }
-    var lines = [];
-    lines.push(r.note || "");
-    if (r.voices && r.voices.length) {
-      lines.push("\nvoices: " + r.voices.map(function(v){return Math.round(v.freq)+"Hz";}).join("  "));
-    }
-    if (r.real && r.real.length) {
-      lines.push("\nreal relationships (sit at center):");
-      r.real.forEach(function (rel) {
-        lines.push("  " + rel.between.join("\u2013") + "Hz   " + rel.interval.cents + "c   diff-tone " + rel.differenceTone + "Hz");
-      });
-    }
+    // gather this window's crossings and ADD any new ones to the held log
+    var added = 0;
     if (r.crossings && r.crossings.length) {
-      lines.push("\nwhat the relationships cross to:");
       r.crossings.forEach(function (c) {
+        var rel = c.relationship;
         (c.crossings || []).forEach(function (x) {
-          lines.push("  \u2192 " + x.from + ": " + (x.source ? x.source + " \u2014 " : "") + "\u201c" + (x.text||"").slice(0,110) + "\u2026\u201d");
+          var key = (x.text||"").slice(0,60);
+          if (!key || seen[key]) return;
+          seen[key] = true;
+          log.unshift({
+            interval: rel && rel.interval ? rel.interval.cents + "c" : "",
+            between: rel && rel.between ? rel.between.join("\u2013")+"Hz" : "",
+            from: x.from, source: x.source || "", text: (x.text||"")
+          });
+          added++;
         });
       });
     }
-    if (r.melody && r.melody.length) {
-      lines.push("\nmelody (motion over time): " + r.melody.length + " steps");
-    }
-    out.textContent = lines.join("\n");
+    if (log.length > 40) log = log.slice(0, 40);   // cap the held log
+    // draw the held log — newest first, each crossing readable and staying put
+    if (!log.length) { out.textContent = "listening\u2026 play music with clear notes"; return; }
+    var html = log.map(function (e) {
+      return "\u2192 " + e.from + (e.interval ? "  ["+e.interval+" "+e.between+"]" : "") + "\n"
+        + (e.source ? "   " + e.source + "\n" : "")
+        + "   \u201c" + e.text.slice(0,220) + "\u2026\u201d";
+    }).join("\n\n");
+    out.textContent = html;
   }
 
   function process(samples, sampleRate) {
@@ -7972,9 +7983,16 @@ Rules:
   var mic = document.getElementById("undMicBtn");
   var tab = document.getElementById("undTabBtn");
   var stop = document.getElementById("undStopBtn");
+  var freeze = document.getElementById("undFreezeBtn");
+  var clear = document.getElementById("undClearBtn");
   if (mic) mic.addEventListener("click", function(){ startCapture("mic"); });
   if (tab) tab.addEventListener("click", function(){ startCapture("tab"); });
-  if (stop) stop.addEventListener("click", function(){ stopCapture(); out.textContent = "stopped"; });
+  if (stop) stop.addEventListener("click", function(){ stopCapture(); });
+  if (freeze) freeze.addEventListener("click", function(){
+    frozen = !frozen; freeze.textContent = frozen ? "Unfreeze" : "Freeze";
+    freeze.style.color = frozen ? "var(--accent,#e0a458)" : "var(--muted,#888)";
+  });
+  if (clear) clear.addEventListener("click", function(){ log = []; seen = {}; out.textContent = "cleared"; });
 })();
 </script>
 </body>
