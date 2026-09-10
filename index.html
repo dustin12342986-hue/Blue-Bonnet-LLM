@@ -256,6 +256,7 @@
 <script src="bb-gallery.js"></script>
 <script src="bb-texts.js"></script>
 <script src="bb-dreams.js"></script>
+<script src="bb-intervals.js"></script>
 <script src="bb-corpus-builder.js"></script>
 <script src="bb-music.js"></script>
 </head>
@@ -276,6 +277,9 @@
     <button id="dreamsBtn" title="Dream journal">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
+    <button id="intervalsBtn" title="Interval lens — the harmonics in a sound">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><path d="M9 9l12-2"/><path d="M9 13l12-2"/></svg>
+    </button>
     <button id="chatsBtn" title="Past chats">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </button>
@@ -283,6 +287,24 @@
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </header>
+
+  <div id="intervalsPanel" style="display:none;position:absolute;inset:0;background:var(--bg,#0d0d0f);z-index:50;overflow:auto;padding:24px;">
+    <div style="max-width:640px;margin:0 auto;">
+      <h2 style="font-size:16px;letter-spacing:.03em;">INTERVAL LENS</h2>
+      <p style="color:var(--muted,#888);font-size:12px;line-height:1.5;">
+        Reads the frequency peaks in a sound and the ratios between them — which
+        musical intervals they land nearest. Measures ratios, not meaning. The
+        null is built in: a sound only reads as musical if its ratios cluster
+        tighter than random. Frequencies are rounded to nearest pitch (± cents).
+      </p>
+      <div style="display:flex;gap:8px;margin:16px 0;">
+        <button id="intMicBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
+        <button id="intTabBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
+        <button id="intStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
+      </div>
+      <div id="intReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:120px;"></div>
+    </div>
+  </div>
 
   <div id="listenPanel">
     <div class="voice-card">
@@ -1247,7 +1269,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-09-named";
+  const BUILD = "2026-09-09-intervaltab";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7780,6 +7802,56 @@ Rules:
       setLoading(false);
     }
   }
+})();
+</script>
+<script>
+(function () {
+  var panel = document.getElementById("intervalsPanel");
+  var btn = document.getElementById("intervalsBtn");
+  var out = document.getElementById("intReading");
+  var session = null;
+  if (!panel || !btn) return;
+
+  function show() { panel.style.display = "block"; }
+  function hide() { panel.style.display = "none"; if (session) { session.stop(); session = null; } }
+
+  btn.addEventListener("click", function () {
+    if (panel.style.display === "block") hide(); else show();
+  });
+
+  function render(r) {
+    if (!r) { out.textContent = "listening..."; return; }
+    if (r.error) { out.textContent = r.error; return; }
+    var pitches = (r.staff || []).map(function (p) {
+      return p.nearestPitch + (p.octave != null ? p.octave : "") +
+             (p.centsOff ? " (" + (p.centsOff > 0 ? "+" : "") + p.centsOff + "c)" : "");
+    }).join("  ");
+    var ivs = (r.ratios || []).slice(0, 4).map(function (x) {
+      return x.nearestInterval + " (" + (x.centsOff > 0 ? "+" : "") + x.centsOff + "c)";
+    }).join(", ");
+    out.textContent =
+      "pitches:  " + (pitches || "-") + "\n" +
+      "intervals: " + (ivs || "-") + "\n" +
+      "musicality: " + (r.musicality != null ? r.musicality : "-") +
+        "   (null baseline " + (r.nullBaseline != null ? r.nullBaseline : "-") + ")\n" +
+      "\n" + (r.note || "");
+  }
+
+  function start(kind) {
+    if (typeof BBIntervals === "undefined") { out.textContent = "interval lens not loaded"; return; }
+    if (session) session.stop();
+    out.textContent = "listening...";
+    try {
+      session = (kind === "tab" ? BBIntervals.listenToTab : BBIntervals.listen)(render, { windowSec: 3 });
+    } catch (e) { out.textContent = String(e && e.message || e); }
+  }
+
+  var mic = document.getElementById("intMicBtn");
+  var tab = document.getElementById("intTabBtn");
+  var stop = document.getElementById("intStopBtn");
+  if (mic) mic.addEventListener("click", function () { start("mic"); });
+  if (tab) tab.addEventListener("click", function () { start("tab"); });
+  if (stop) stop.addEventListener("click", function () { if (session) { session.stop(); session = null; } out.textContent = "stopped"; });
 })();
 </script>
 </body>
