@@ -1297,7 +1297,7 @@ BOUNDARIES
   // Bumped whenever this file changes, so which build is actually live can be
   // checked in one second instead of guessed at. Type __bbBuild in the
   // console, or look at the title attribute on the header.
-  const BUILD = "2026-09-10-understanding3";
+  const BUILD = "2026-09-10-understanding4";
   try { window.__bbBuild = BUILD; } catch (e) {}
   // bb-texts encodes live passages with the app's own encoder, so a live
   // passage is scored on exactly the same terms as a curated one.
@@ -7926,21 +7926,16 @@ Rules:
     }
     // gather this window's crossings and ADD any new ones to the held log
     var added = 0;
-    if (r.crossings && r.crossings.length) {
-      r.crossings.forEach(function (c) {
-        var rel = c.relationship;
-        (c.crossings || []).forEach(function (x) {
-          var key = (x.text||"").slice(0,60);
-          if (!key || seen[key]) return;
-          seen[key] = true;
-          log.unshift({
-            interval: rel && rel.interval ? rel.interval.cents + "c" : "",
-            between: rel && rel.between ? rel.between.join("\u2013")+"Hz" : "",
-            from: x.from, source: x.source || "", text: (x.text||"")
-          });
-          added++;
+    if (r.crossing && r.crossing.text) {
+      var key = r.crossing.text.slice(0,60);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        log.unshift({
+          interval: "", between: "",
+          from: r.crossing.from || "", source: r.crossing.source || "", text: r.crossing.text
         });
-      });
+        added++;
+      }
     }
     if (log.length > 40) log = log.slice(0, 40);   // cap the held log
     // draw the held log — newest first, each crossing readable and staying put
@@ -7956,10 +7951,13 @@ Rules:
   function process(samples, sampleRate) {
     if (typeof BBMusicLens === "undefined") { out.textContent = "music lens not loaded"; return; }
     try {
-      var r = BBMusicLens.read(samples, sampleRate, {
-        cross: true, fullSamples: samples, fullSampleRate: sampleRate, windows: 8, maxVoices: 8
-      });
-      render(r);
+      // readAndCross crosses the sound's REAL signature through anyLens with
+      // pages:20, exactly like the working music listen path \u2014 so it pulls
+      // the live pool and crosses to real passages.
+      BBMusicLens.readAndCross(samples, sampleRate, {
+        fullSamples: samples, fullSampleRate: sampleRate, windows: 8, maxVoices: 8
+      }).then(function (r) { render(r); })
+        .catch(function (e) { out.textContent = String(e && e.message || e); });
     } catch (e) { out.textContent = String(e && e.message || e); }
   }
 
