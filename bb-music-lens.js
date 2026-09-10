@@ -184,34 +184,54 @@
   function crossRelationship(rel, opts) {
     opts = opts || {};
     var out = { relationship: rel, crossings: [] };
-    // a relationship is characterized by its texture; use the existing lens
-    // read-only to find what it crosses to. We do NOT alter BBLens.
     if (typeof BBLens === "undefined") return out;
-    // describe the relationship as a minimal texture query: its interval size
-    // maps to a register (wide/open vs close/tense). This is a description,
-    // not an alteration of any lens.
+
+    // The relationship is characterized by its texture axes (its character).
     var cents = rel.interval ? rel.interval.cents : (rel.cents || 0);
-    // build a tiny signal-free texture sig from the relationship's character
     var axes = [];
     if (cents >= 700) axes.push("released"); else if (cents <= 200) axes.push("tense");
     if (rel.differenceTone && rel.differenceTone < 100) axes.push("low");
-    var sig = { modes: { all: axes.length ? axes : ["released"] } };
-    // cross into whatever far ends are present, read-only
+    var relAxes = axes.length ? axes : ["released"];
+    var sig = { modes: { all: relAxes } };
+
+    /* SUBTRACT, do not select the maximum.
+       For each candidate far end: subtract the shared subject (topic) away,
+       and read what texture REMAINS. Keep a candidate only if what remains
+       is a REAL relationship — it sits at the center: it shares the
+       relationship's axes AND is not identical (a pole) and not unrelated
+       (a pole). We do not grab the highest score. We keep what remains at
+       the center, the same discipline as the rest of the lens. */
+    function remainsAtCenter(text) {
+      var t = BBLens._textureScore(sig, { modes: {}, text: text });
+      if (!t || t.sameSubject) return null;          // identical subject = a pole, not a relationship
+      // what remains after subtracting topic: the shared texture axes
+      var shared = (t.shared || []);
+      if (!shared.length) return null;               // nothing remained = unrelated = a pole
+      // it remains at the center if what is left is a genuine between:
+      // it carries the relationship's axes without collapsing to sameness.
+      // align is the proportion that remains; a real between sits mid-range,
+      // not at 1 (identical) and not at 0 (nothing). center-test the remainder.
+      var pos = t.align;                             // 0..1, what remained
+      var real = pos > 0 && pos < 1 && !t.sameSubject && shared.length > 0;
+      return real ? { remained: shared, text: text } : null;
+    }
+
+    // corpus — read-only, keep the first that remains at center (not the max)
     try {
-      var hit = BBLens.lens({ modes: sig.modes }, { valence: 0, arousal: 0.3 },
-                            { allowSmallCorpus: true });
-      if (hit) out.crossings.push({ from: "corpus", source: hit.entry.source || hit.entry.artist,
-                                    text: String(hit.entry.text||"").slice(0,160), axes: hit.axes });
+      var corpus = BBLens.corpus || [];
+      for (var ci = 0; ci < corpus.length; ci++) {
+        var r = remainsAtCenter(corpus[ci].text);
+        if (r) { out.crossings.push({ from: "corpus", source: corpus[ci].source || corpus[ci].artist,
+                                      text: String(corpus[ci].text||"").slice(0,160), remained: r.remained }); break; }
+      }
     } catch (e) {}
-    // dreams, read-only
+    // dreams — read-only, keep the first that remains at center (not the max)
     if (typeof BB_DREAMS !== "undefined" && BB_DREAMS.length) {
       try {
-        var best = null;
-        for (var i = 0; i < BB_DREAMS.length; i++) {
-          var t = BBLens._textureScore(sig, { modes: {}, text: BB_DREAMS[i].text });
-          if (t.score > 0 && (!best || t.score > best.score)) best = { score: t.score, text: BB_DREAMS[i].text };
+        for (var di = 0; di < BB_DREAMS.length; di++) {
+          var rd = remainsAtCenter(BB_DREAMS[di].text);
+          if (rd) { out.crossings.push({ from: "dream", text: BB_DREAMS[di].text.slice(0,160), remained: rd.remained }); break; }
         }
-        if (best) out.crossings.push({ from: "dream", text: best.text.slice(0,160) });
       } catch (e) {}
     }
     return out;
