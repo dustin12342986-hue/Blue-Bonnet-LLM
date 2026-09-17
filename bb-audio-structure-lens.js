@@ -271,7 +271,9 @@
     });
   }
 
+  var BUILD = "2026-09-10-understanding4";
   root.BBAudioStructure = {
+    BUILD: BUILD,
     signatureOf: signatureOf,   // (Float32Array, sampleRate) -> sensoryOf-shaped signature
     listen: listen,             // (MediaStream, seconds) -> Promise<signature>
     analyseFile: analyseFile,   // (File) -> Promise<signature>
