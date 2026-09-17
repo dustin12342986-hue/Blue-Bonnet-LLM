@@ -248,28 +248,87 @@
 
   /* Capture from a MediaStream (mic or tab) for `seconds`, then analyse.
      Returns a Promise of the signature. Browser only. */
-  function listen(stream, seconds) {
-    seconds = seconds || 4;
-    return new Promise(function (resolve, reject) {
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = ctx.createMediaStreamSource(stream);
-        const proc = ctx.createScriptProcessor(4096, 1, 1);
-        const need = Math.floor(ctx.sampleRate * seconds);
-        const buf = [];
-        src.connect(proc); proc.connect(ctx.destination);
-        proc.onaudioprocess = function (e) {
-          const ch = e.inputBuffer.getChannelData(0);
-          for (let i = 0; i < ch.length; i++) buf.push(ch[i]);
-          if (buf.length >= need) {
-            proc.disconnect(); src.disconnect();
-            try { ctx.close(); } catch (x) {}
-            stream.getTracks().forEach(function (t) { t.stop(); });
-            resolve(signatureOf(Float32Array.from(buf.slice(0, need)), ctx.sampleRate));
-          }
-        };
-      } catch (err) { reject(err); }
-    });
+  // Continuous capture: starts on startSession(), runs until stop() is called.
+  // Calls onUpdate(signature) live every `updateEvery` seconds, and returns the
+  // final full-session signature from stop(). Bounded memory: keeps a rolling
+  // buffer of recent audio plus running feature accumulation, so a 10-minute
+  // song never blows up memory or freezes.
+  function startSession(stream, onUpdate, updateEvery) {
+    updateEvery = updateEvery || 3;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const sampleRate = ctx.sampleRate;
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    let buf = [];                          // rolling window of recent samples
+    let stopped = false;
+    const windowSamples = Math.floor(sampleRate * updateEvery);
+    // running average of every signature we compute, so "final" reflects whole song
+    let runSum = null, runCount = 0, lastSig = null;
+
+    function mergeRunning(sig) {
+      if (!sig || !sig._raw) return;
+      const r = sig._raw;
+      if (!runSum) runSum = { centroid:0, spread:0, flux:0, rolloff:0, zcr:0 };
+      runSum.centroid += r.centroid; runSum.spread += r.spread;
+      runSum.flux += r.flux; runSum.rolloff += r.rolloff; runSum.zcr += r.zcr;
+      runCount++;
+      lastSig = sig;
+    }
+
+    src.connect(proc); proc.connect(ctx.destination);
+    proc.onaudioprocess = function (e) {
+      if (stopped) return;
+      const ch = e.inputBuffer.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) buf.push(ch[i]);
+      if (buf.length >= windowSamples) {
+        const chunk = Float32Array.from(buf);
+        buf = [];                          // reset window
+        const sig = signatureOf(chunk, sampleRate);
+        mergeRunning(sig);
+        if (onUpdate) { try { onUpdate(sig, runCount); } catch (x) {} }
+      }
+    };
+
+    function stop() {
+      if (stopped) return lastSig;
+      stopped = true;
+      try { proc.onaudioprocess = null; } catch (x) {}
+      try { proc.disconnect(); } catch (x) {}
+      try { src.disconnect(); } catch (x) {}
+      try { ctx.close(); } catch (x) {}
+      try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch (x) {}
+      // return a session-average signature if we have one
+      if (runCount && runSum && lastSig) {
+        // rebuild an averaged signature from the running raw means
+        const avg = { centroid: runSum.centroid/runCount, spread: runSum.spread/runCount,
+                      flux: runSum.flux/runCount, rolloff: runSum.rolloff/runCount, zcr: runSum.zcr/runCount };
+        // relabel from the averaged raw features using the same bucketing as lastSig's structure
+        return _labelFromRaw(avg, sampleRate, lastSig);
+      }
+      return lastSig;
+    }
+
+    return { stop: stop };
+  }
+
+  // Rebuild a signature's labels from averaged raw features (session summary).
+  // Falls back to the last live signature's timbre/harmony (those need the spectrum).
+  function _labelFromRaw(avg, sampleRate, lastSig) {
+    const nyq = sampleRate / 2;
+    const modes = {};
+    let count = 0;
+    const add = (m, l) => { (modes[m] = modes[m] || []).push(l); count++; };
+    const bucket = (v, edges, names) => { for (let i=0;i<edges.length;i++) if (v<edges[i]) return names[i]; return names[names.length-1]; };
+    add("brightness", bucket(avg.centroid/nyq, [0.06,0.15,0.30], ["dark","warm","bright","brilliant"]));
+    add("width", bucket(avg.spread/nyq, [0.08,0.16,0.28], ["thin","focused","thick","wide"]));
+    const rough = Math.min(1, avg.zcr*20*0.5 + 0.25);
+    add("texture", bucket(rough, [0.2,0.45,0.7], ["soft","smooth","grainy","rough"]));
+    add("air", bucket(avg.rolloff/nyq, [0.2,0.4,0.6], ["low","mid","high","airy"]));
+    // timbre + harmony can't be averaged from scalars; carry the last live read
+    if (lastSig && lastSig.modes.timbre) modes.timbre = lastSig.modes.timbre.slice();
+    if (lastSig && lastSig.modes.harmony) modes.harmony = lastSig.modes.harmony.slice();
+    return { modes: modes, count: count + (modes.timbre?modes.timbre.length:0) + (modes.harmony?modes.harmony.length:0),
+             _raw: avg, _session: true };
   }
 
   /* Analyse an audio File/Blob. Returns a Promise of the signature. */
@@ -292,7 +351,7 @@
   root.BBAudioStructure = {
     BUILD: BUILD,
     signatureOf: signatureOf,   // (Float32Array, sampleRate) -> sensoryOf-shaped signature
-    listen: listen,             // (MediaStream, seconds) -> Promise<signature>
+    startSession: startSession,             // (MediaStream, seconds) -> Promise<signature>
     analyseFile: analyseFile,   // (File) -> Promise<signature>
     // raw feature extractors, exposed for testing / other uses:
     _fftMag: fftMag,

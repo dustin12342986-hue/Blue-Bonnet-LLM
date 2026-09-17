@@ -351,6 +351,7 @@
         <input id="structFile" type="file" accept="audio/*" style="flex:1;min-width:160px;color:inherit;" />
         <button id="structMicBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
         <button id="structTabBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
+        <button id="structStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
         <button id="structCloseBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Close</button>
       </div>
       <div id="structReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:160px;"></div>
@@ -7914,7 +7915,7 @@ Rules:
   var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
 
   function show() { panel.style.display = "block"; }
-  function hide() { panel.style.display = "none"; stopCapture(); }
+  function hide() { panel.style.display = "none"; if (session) { try { session.stop(); } catch(e){} session = null; } }
   btn.addEventListener("click", function () {
     if (panel.style.display === "block") hide(); else show();
   });
@@ -8081,35 +8082,65 @@ Rules:
     });
   });
 
-  function startCapture(kind) {
-    stopCapture();
-    stopped = false;
-    out.textContent = "listening\u2026 (4 seconds)";
+  var session = null;
+
+  function setRunning(on) {
+    if (micBtn) micBtn.disabled = on;
+    if (tabBtn) tabBtn.disabled = on;
+    if (stopBtn) stopBtn.style.color = on ? "var(--accent,#e0a458)" : "var(--muted,#888)";
+  }
+
+  function liveRender(sig, n) {
+    if (!sig) return;
+    var L = [];
+    L.push("listening\u2026 reading " + n + " (hit Stop when the song ends)");
+    if (sig._raw) {
+      L.push("centroid: " + Math.round(sig._raw.centroid) + " Hz    spread: " + Math.round(sig._raw.spread) + " Hz    rolloff: " + Math.round(sig._raw.rolloff) + " Hz");
+    }
+    L.push("");
+    L.push("current window texture:");
+    Object.keys(sig.modes).forEach(function (m) { L.push("  " + m + ": " + sig.modes[m].join(", ")); });
+    out.textContent = L.join("\n");
+  }
+
+  function startSession(kind) {
+    if (session) return;                       // already running
+    out.textContent = "starting\u2026";
     var getMedia = kind === "tab"
       ? navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
       : navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
     getMedia.then(function (s) {
-      if (stopped) { s.getTracks().forEach(function(t){t.stop();}); return; }
       if (kind === "tab") { s.getVideoTracks().forEach(function(t){t.stop();}); }
       var audioStream = kind === "tab" ? new MediaStream(s.getAudioTracks()) : s;
       if (kind === "tab" && !audioStream.getAudioTracks().length) { out.textContent = "no tab audio \u2014 tick 'share tab audio'"; return; }
-      stream = audioStream;
-      BBAudioStructure.listen(audioStream, 4).then(function (sig) {
-        render(sig);
-      }).catch(function (err) { out.textContent = String(err && err.message || err); });
-    }).catch(function (err) { out.textContent = String(err && err.message || err); });
+      setRunning(true);
+      session = BBAudioStructure.startSession(audioStream, liveRender, 3);
+    }).catch(function (err) { out.textContent = String(err && err.message || err); setRunning(false); });
   }
-  function stopCapture() {
-    stopped = true;
-    try { if (stream) stream.getTracks().forEach(function(t){t.stop();}); } catch(e){}
-    stream = null;
+
+  function stopSession() {
+    if (!session) return;
+    var finalSig = session.stop();
+    session = null;
+    setRunning(false);
+    if (!finalSig || !finalSig.count) { out.textContent = "no signal captured"; return; }
+    var L = [];
+    L.push("FULL SONG SIGNATURE (feeds sensoryMatch):");
+    if (finalSig._raw) {
+      L.push("centroid: " + Math.round(finalSig._raw.centroid) + " Hz    spread: " + Math.round(finalSig._raw.spread) + " Hz    rolloff: " + Math.round(finalSig._raw.rolloff) + " Hz");
+    }
+    L.push("");
+    Object.keys(finalSig.modes).forEach(function (m) { L.push("  " + m + ": " + finalSig.modes[m].join(", ")); });
+    out.textContent = L.join("\n");
   }
 
   var micBtn = document.getElementById("structMicBtn");
   var tabBtn = document.getElementById("structTabBtn");
-  if (micBtn) micBtn.addEventListener("click", function(){ startCapture("mic"); });
-  if (tabBtn) tabBtn.addEventListener("click", function(){ startCapture("tab"); });
-})();
+  var stopBtn = document.getElementById("structStopBtn");
+  if (micBtn) micBtn.addEventListener("click", function(){ startSession("mic"); });
+  if (tabBtn) tabBtn.addEventListener("click", function(){ startSession("tab"); });
+  if (stopBtn) stopBtn.addEventListener("click", stopSession);
+  })();
 </script>
 </body>
 </html>
