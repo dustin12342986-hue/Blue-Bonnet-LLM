@@ -163,6 +163,15 @@
                          timbre:[...], harmony:[...] }, count } */
   function signatureOf(samples, sampleRate) {
     sampleRate = sampleRate || 44100;
+    // HARD SAFETY: never analyse more than ~6 seconds of audio. A long decoded
+    // file has millions of samples; bounding this guarantees the tab can never
+    // freeze no matter the file length or sample rate.
+    var MAX_SAMPLES = sampleRate * 6;
+    if (samples.length > MAX_SAMPLES) {
+      // take a slice from the middle (more representative than the silent start)
+      var startAt = Math.floor((samples.length - MAX_SAMPLES) / 2);
+      samples = samples.slice(startAt, startAt + MAX_SAMPLES);
+    }
     // frame the signal; average features across frames for stability
     const FRAME = 2048, HOP = 1024;
     const nyq = sampleRate / 2;
