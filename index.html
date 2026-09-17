@@ -8045,6 +8045,7 @@ Rules:
   if (!panel || !btn) return;
   var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
   var runSum = null, runCount = 0, lastSig = null;
+  var windows = [];   // saved signature of every window across the whole song
 
   function show() { panel.style.display = "block"; }
   function hide() { panel.style.display = "none"; stopCapture(); }
@@ -8054,6 +8055,18 @@ Rules:
 
   function renderLive(sig) {
     if (!sig || !sig.count) return;
+    // SAVE this window's full signature so the whole song is measured over time
+    windows.push({
+      t: runCount * 3,                 // seconds into the song (window index * 3s)
+      modes: sig.modes,
+      raw: sig._raw ? {
+        centroid: Math.round(sig._raw.centroid),
+        spread: Math.round(sig._raw.spread),
+        rolloff: Math.round(sig._raw.rolloff),
+        flux: +sig._raw.flux.toFixed(3),
+        zcr: +sig._raw.zcr.toFixed(4)
+      } : null
+    });
     if (sig._raw) {
       if (!runSum) runSum = { centroid:0, spread:0, flux:0, rolloff:0, zcr:0 };
       runSum.centroid += sig._raw.centroid; runSum.spread += sig._raw.spread;
@@ -8078,7 +8091,7 @@ Rules:
 
   function startCapture(kind) {
     stopCapture();
-    stopped = false; runSum = null; runCount = 0; lastSig = null;
+    stopped = false; runSum = null; runCount = 0; lastSig = null; windows = [];
     out.textContent = "listening...";
     var getMedia = kind === "tab"
       ? navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
@@ -8113,16 +8126,23 @@ Rules:
     try { if (ctx) ctx.close(); } catch(e){}
     try { if (stream) stream.getTracks().forEach(function(t){t.stop();}); } catch(e){}
     ctx = source = proc = stream = null;
-    // on stop, show the full-song averaged signature
-    if (runCount && runSum && lastSig) {
-      var nyq = (lastSig._raw && lastSig._sr) ? lastSig._sr/2 : 22050;
-      var avg = { centroid: runSum.centroid/runCount, spread: runSum.spread/runCount, rolloff: runSum.rolloff/runCount, zcr: runSum.zcr/runCount, flux: runSum.flux/runCount };
+    // on stop, show the full timeline: every saved window across the song
+    if (windows.length) {
+      var avg = { centroid: runSum.centroid/runCount, spread: runSum.spread/runCount, rolloff: runSum.rolloff/runCount };
       var L = [];
-      L.push("FULL SONG SIGNATURE (" + runCount + " windows, feeds sensoryMatch):");
-      L.push("centroid: " + Math.round(avg.centroid) + " Hz    spread: " + Math.round(avg.spread) + " Hz    rolloff: " + Math.round(avg.rolloff) + " Hz");
+      L.push("FULL SONG \u2014 " + windows.length + " windows saved (" + (windows.length*3) + "s):");
+      L.push("song average:  centroid " + Math.round(avg.centroid) + " Hz   spread " + Math.round(avg.spread) + " Hz   rolloff " + Math.round(avg.rolloff) + " Hz");
       L.push("");
-      Object.keys(lastSig.modes).forEach(function (m) { L.push("  " + m + ": " + lastSig.modes[m].join(", ")); });
-      if (out.textContent.indexOf("FULL SONG") === -1) out.textContent = L.join("\n");
+      L.push("timeline (each window = 3s):");
+      windows.forEach(function (w) {
+        var b = (w.modes.brightness||[]).join("/");
+        var tx = (w.modes.texture||[]).join("/");
+        var h = (w.modes.harmony||[]).join(",");
+        L.push("  " + String(w.t).padStart(4," ") + "s  " + (w.raw?w.raw.centroid+"Hz":"") + "  " + b + " / " + tx + "  [" + h + "]");
+      });
+      out.textContent = L.join("\n");
+      // expose the full measurement for saving / further use
+      try { window.__bbLastSongWindows = windows.slice(); } catch(e){}
     }
   }
 
