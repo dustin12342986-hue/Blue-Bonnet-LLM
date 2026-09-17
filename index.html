@@ -338,21 +338,19 @@
     </div>
   </div>
 
-    <div id="structurePanel" style="display:none;position:absolute;top:70px;left:0;right:0;bottom:0;background:var(--bg,#0d0d0f);z-index:40;overflow:auto;padding:24px;">
+    <div id="structurePanel" style="display:none;position:absolute;inset:0;background:var(--bg,#0d0d0f);z-index:50;overflow:auto;padding:24px;">
     <div style="max-width:680px;margin:0 auto;">
       <h2 style="font-size:16px;letter-spacing:.03em;">STRUCTURE</h2>
       <p style="color:var(--muted,#888);font-size:12px;line-height:1.5;">
-        Decodes a sound down to its DSP structure — spectral centroid, spread,
-        flux, rolloff, mel-band timbre, and chroma — then quantizes those into
-        texture labels and reads them through the same match math the app uses.
-        Nothing is uploaded; the analysis happens here.
+        Decodes a sound to its DSP structure — spectral centroid, spread, flux,
+        rolloff, mel-band timbre, chroma — reading continuously while it plays.
+        Hit Listen, play the song, hit Stop for the full-song signature. Nothing
+        is uploaded; the analysis happens here.
       </p>
-      <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap;">
-        <input id="structFile" type="file" accept="audio/*" style="flex:1;min-width:160px;color:inherit;" />
-        <button id="structMicBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
-        <button id="structTabBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
+      <div style="display:flex;gap:8px;margin:16px 0;">
+        <button id="structMicBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
+        <button id="structTabBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (a tab)</button>
         <button id="structStopBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Stop</button>
-        <button id="structCloseBtn" style="flex:0 0 auto;padding:10px 16px;border-radius:8px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);cursor:pointer;">Close</button>
       </div>
       <div id="structReading" style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;color:var(--muted,#aaa);min-height:160px;"></div>
     </div>
@@ -7915,7 +7913,7 @@ Rules:
   var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
 
   function show() { panel.style.display = "block"; }
-  function hide() { panel.style.display = "none"; if (session) { try { session.stop(); } catch(e){} session = null; } }
+  function hide() { panel.style.display = "none"; stopCapture(); }
   btn.addEventListener("click", function () {
     if (panel.style.display === "block") hide(); else show();
   });
@@ -8045,102 +8043,96 @@ Rules:
   var btn = document.getElementById("structureBtn");
   var out = document.getElementById("structReading");
   if (!panel || !btn) return;
-  var stopped = true, ctx = null, source = null, proc = null, stream = null;
+  var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
+  var runSum = null, runCount = 0, lastSig = null;
 
   function show() { panel.style.display = "block"; }
   function hide() { panel.style.display = "none"; stopCapture(); }
   btn.addEventListener("click", function () {
     if (panel.style.display === "block") hide(); else show();
   });
-  var closeBtn = document.getElementById("structCloseBtn");
-  if (closeBtn) closeBtn.addEventListener("click", hide);
 
-  function render(sig) {
-    if (typeof BBAudioStructure === "undefined") { out.textContent = "structure lens not loaded"; return; }
-    if (!sig || !sig.count) { out.textContent = "no signal read"; return; }
-    var L = [];
+  function renderLive(sig) {
+    if (!sig || !sig.count) return;
     if (sig._raw) {
-      L.push("centroid: " + Math.round(sig._raw.centroid) + " Hz    spread: " + Math.round(sig._raw.spread) + " Hz");
-      L.push("rolloff:  " + Math.round(sig._raw.rolloff) + " Hz    flux: " + sig._raw.flux.toFixed(2) + "    zcr: " + sig._raw.zcr.toFixed(4));
-      L.push("");
+      if (!runSum) runSum = { centroid:0, spread:0, flux:0, rolloff:0, zcr:0 };
+      runSum.centroid += sig._raw.centroid; runSum.spread += sig._raw.spread;
+      runSum.flux += sig._raw.flux; runSum.rolloff += sig._raw.rolloff; runSum.zcr += sig._raw.zcr;
+      runCount++; lastSig = sig;
     }
-    L.push("TEXTURE SIGNATURE (feeds sensoryMatch):");
-    Object.keys(sig.modes).forEach(function (m) {
-      L.push("  " + m + ": " + sig.modes[m].join(", "));
-    });
-    out.textContent = L.join("\n");
-  }
-
-  // File input
-  var fileInput = document.getElementById("structFile");
-  if (fileInput) fileInput.addEventListener("change", function (e) {
-    var file = e.target.files && e.target.files[0];
-    if (!file) return;
-    out.textContent = "analysing\u2026";
-    BBAudioStructure.analyseFile(file).then(render).catch(function (err) {
-      out.textContent = String(err && err.message || err);
-    });
-  });
-
-  var session = null;
-
-  function setRunning(on) {
-    if (micBtn) micBtn.disabled = on;
-    if (tabBtn) tabBtn.disabled = on;
-    if (stopBtn) stopBtn.style.color = on ? "var(--accent,#e0a458)" : "var(--muted,#888)";
-  }
-
-  function liveRender(sig, n) {
-    if (!sig) return;
     var L = [];
-    L.push("listening\u2026 reading " + n + " (hit Stop when the song ends)");
-    if (sig._raw) {
-      L.push("centroid: " + Math.round(sig._raw.centroid) + " Hz    spread: " + Math.round(sig._raw.spread) + " Hz    rolloff: " + Math.round(sig._raw.rolloff) + " Hz");
-    }
+    L.push("listening\u2026 window " + runCount + "  (hit Stop for full-song signature)");
+    if (sig._raw) L.push("centroid: " + Math.round(sig._raw.centroid) + " Hz    spread: " + Math.round(sig._raw.spread) + " Hz    rolloff: " + Math.round(sig._raw.rolloff) + " Hz");
     L.push("");
-    L.push("current window texture:");
     Object.keys(sig.modes).forEach(function (m) { L.push("  " + m + ": " + sig.modes[m].join(", ")); });
     out.textContent = L.join("\n");
   }
 
-  function startSession(kind) {
-    if (session) return;                       // already running
-    out.textContent = "starting\u2026";
+  function process(samples, sampleRate) {
+    if (typeof BBAudioStructure === "undefined") { out.textContent = "structure lens not loaded"; return; }
+    try {
+      var sig = BBAudioStructure.signatureOf(samples, sampleRate);
+      renderLive(sig);
+    } catch (e) { out.textContent = String(e && e.message || e); }
+  }
+
+  function startCapture(kind) {
+    stopCapture();
+    stopped = false; runSum = null; runCount = 0; lastSig = null;
+    out.textContent = "listening...";
     var getMedia = kind === "tab"
       ? navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
       : navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } });
     getMedia.then(function (s) {
+      if (stopped) { s.getTracks().forEach(function(t){t.stop();}); return; }
       if (kind === "tab") { s.getVideoTracks().forEach(function(t){t.stop();}); }
+      stream = s;
       var audioStream = kind === "tab" ? new MediaStream(s.getAudioTracks()) : s;
       if (kind === "tab" && !audioStream.getAudioTracks().length) { out.textContent = "no tab audio \u2014 tick 'share tab audio'"; return; }
-      setRunning(true);
-      session = BBAudioStructure.startSession(audioStream, liveRender, 3);
-    }).catch(function (err) { out.textContent = String(err && err.message || err); setRunning(false); });
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      source = ctx.createMediaStreamSource(audioStream);
+      proc = ctx.createScriptProcessor(4096, 1, 1);
+      var need = Math.floor(ctx.sampleRate * 3);
+      source.connect(proc); proc.connect(ctx.destination);
+      proc.onaudioprocess = function (e) {
+        if (stopped) return;
+        var chunk = e.inputBuffer.getChannelData(0);
+        for (var i = 0; i < chunk.length; i++) buf.push(chunk[i]);
+        if (buf.length >= need) {
+          var samples = Float32Array.from(buf.slice(0, need));
+          buf = [];
+          process(samples, ctx.sampleRate);
+        }
+      };
+    }).catch(function (err) { out.textContent = String(err && err.message || err); });
   }
-
-  function stopSession() {
-    if (!session) return;
-    var finalSig = session.stop();
-    session = null;
-    setRunning(false);
-    if (!finalSig || !finalSig.count) { out.textContent = "no signal captured"; return; }
-    var L = [];
-    L.push("FULL SONG SIGNATURE (feeds sensoryMatch):");
-    if (finalSig._raw) {
-      L.push("centroid: " + Math.round(finalSig._raw.centroid) + " Hz    spread: " + Math.round(finalSig._raw.spread) + " Hz    rolloff: " + Math.round(finalSig._raw.rolloff) + " Hz");
+  function stopCapture() {
+    stopped = true; buf = [];
+    try { if (proc) proc.disconnect(); } catch(e){}
+    try { if (source) source.disconnect(); } catch(e){}
+    try { if (ctx) ctx.close(); } catch(e){}
+    try { if (stream) stream.getTracks().forEach(function(t){t.stop();}); } catch(e){}
+    ctx = source = proc = stream = null;
+    // on stop, show the full-song averaged signature
+    if (runCount && runSum && lastSig) {
+      var nyq = (lastSig._raw && lastSig._sr) ? lastSig._sr/2 : 22050;
+      var avg = { centroid: runSum.centroid/runCount, spread: runSum.spread/runCount, rolloff: runSum.rolloff/runCount, zcr: runSum.zcr/runCount, flux: runSum.flux/runCount };
+      var L = [];
+      L.push("FULL SONG SIGNATURE (" + runCount + " windows, feeds sensoryMatch):");
+      L.push("centroid: " + Math.round(avg.centroid) + " Hz    spread: " + Math.round(avg.spread) + " Hz    rolloff: " + Math.round(avg.rolloff) + " Hz");
+      L.push("");
+      Object.keys(lastSig.modes).forEach(function (m) { L.push("  " + m + ": " + lastSig.modes[m].join(", ")); });
+      if (out.textContent.indexOf("FULL SONG") === -1) out.textContent = L.join("\n");
     }
-    L.push("");
-    Object.keys(finalSig.modes).forEach(function (m) { L.push("  " + m + ": " + finalSig.modes[m].join(", ")); });
-    out.textContent = L.join("\n");
   }
 
-  var micBtn = document.getElementById("structMicBtn");
-  var tabBtn = document.getElementById("structTabBtn");
-  var stopBtn = document.getElementById("structStopBtn");
-  if (micBtn) micBtn.addEventListener("click", function(){ startSession("mic"); });
-  if (tabBtn) tabBtn.addEventListener("click", function(){ startSession("tab"); });
-  if (stopBtn) stopBtn.addEventListener("click", stopSession);
-  })();
+  var mic = document.getElementById("structMicBtn");
+  var tab = document.getElementById("structTabBtn");
+  var stop = document.getElementById("structStopBtn");
+  if (mic) mic.addEventListener("click", function(){ startCapture("mic"); });
+  if (tab) tab.addEventListener("click", function(){ startCapture("tab"); });
+  if (stop) stop.addEventListener("click", function(){ stopCapture(); });
+})();
 </script>
 </body>
 </html>
