@@ -170,7 +170,15 @@
     const acc = { centroid: [], spread: [], flux: [], rolloff: [], zcr: [] };
     const melAcc = null; let melSum = null, chromaSum = new Float64Array(12), frames = 0;
 
-    for (let start = 0; start + FRAME <= samples.length; start += HOP) {
+    // CAP: analysing an entire song frame-by-frame on the main thread will
+    // freeze the tab. A few seconds is plenty for a stable texture signature.
+    // If the clip is long, sample evenly across it instead of scanning all.
+    const MAX_FRAMES = 300;                 // ~7 seconds of hops, bounded
+    const totalFrames = Math.max(1, Math.floor((samples.length - FRAME) / HOP) + 1);
+    const step = totalFrames > MAX_FRAMES ? Math.floor(totalFrames / MAX_FRAMES) : 1;
+    const HOP_EFFECTIVE = HOP * step;
+
+    for (let start = 0; start + FRAME <= samples.length; start += HOP_EFFECTIVE) {
       const frame = hann(samples.slice(start, start + FRAME));
       const mag = fftMag(frame);
       const cen = spectralCentroid(mag, sampleRate, FRAME);
