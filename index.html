@@ -342,10 +342,10 @@
     <div style="max-width:680px;margin:0 auto;">
       <h2 style="font-size:16px;letter-spacing:.03em;">STRUCTURE</h2>
       <p style="color:var(--muted,#888);font-size:12px;line-height:1.5;">
-        Decodes a sound to its DSP structure — spectral centroid, spread, flux,
-        rolloff, mel-band timbre, chroma — reading continuously while it plays.
-        Hit Listen, play the song, hit Stop for the full-song signature. Nothing
-        is uploaded; the analysis happens here.
+        Decodes a sound to its DSP structure — centroid, spread, flux, rolloff,
+        mel-band timbre, chroma — reading continuously while it plays and saving
+        every window. Hit Listen, play the song, hit Stop for the full-song
+        timeline. Nothing is uploaded; the analysis happens here.
       </p>
       <div style="display:flex;gap:8px;margin:16px 0;">
         <button id="structMicBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--line,#333);background:var(--card,#1a1a1e);color:inherit;cursor:pointer;">Listen (mic)</button>
@@ -8044,8 +8044,7 @@ Rules:
   var out = document.getElementById("structReading");
   if (!panel || !btn) return;
   var ctx = null, source = null, proc = null, stream = null, buf = [], stopped = true;
-  var runSum = null, runCount = 0, lastSig = null;
-  var windows = [];   // saved signature of every window across the whole song
+  var runSum = null, runCount = 0, lastSig = null, windows = [];
 
   function show() { panel.style.display = "block"; }
   function hide() { panel.style.display = "none"; stopCapture(); }
@@ -8055,18 +8054,9 @@ Rules:
 
   function renderLive(sig) {
     if (!sig || !sig.count) return;
-    // SAVE this window's full signature so the whole song is measured over time
-    windows.push({
-      t: runCount * 3,                 // seconds into the song (window index * 3s)
-      modes: sig.modes,
-      raw: sig._raw ? {
-        centroid: Math.round(sig._raw.centroid),
-        spread: Math.round(sig._raw.spread),
-        rolloff: Math.round(sig._raw.rolloff),
-        flux: +sig._raw.flux.toFixed(3),
-        zcr: +sig._raw.zcr.toFixed(4)
-      } : null
-    });
+    windows.push({ t: runCount * 3, modes: sig.modes,
+      raw: sig._raw ? { centroid: Math.round(sig._raw.centroid), spread: Math.round(sig._raw.spread),
+        rolloff: Math.round(sig._raw.rolloff), flux: +sig._raw.flux.toFixed(3), zcr: +sig._raw.zcr.toFixed(4) } : null });
     if (sig._raw) {
       if (!runSum) runSum = { centroid:0, spread:0, flux:0, rolloff:0, zcr:0 };
       runSum.centroid += sig._raw.centroid; runSum.spread += sig._raw.spread;
@@ -8074,7 +8064,7 @@ Rules:
       runCount++; lastSig = sig;
     }
     var L = [];
-    L.push("listening\u2026 window " + runCount + "  (hit Stop for full-song signature)");
+    L.push("listening\u2026 window " + runCount + "  (hit Stop for the full-song timeline)");
     if (sig._raw) L.push("centroid: " + Math.round(sig._raw.centroid) + " Hz    spread: " + Math.round(sig._raw.spread) + " Hz    rolloff: " + Math.round(sig._raw.rolloff) + " Hz");
     L.push("");
     Object.keys(sig.modes).forEach(function (m) { L.push("  " + m + ": " + sig.modes[m].join(", ")); });
@@ -8083,10 +8073,8 @@ Rules:
 
   function process(samples, sampleRate) {
     if (typeof BBAudioStructure === "undefined") { out.textContent = "structure lens not loaded"; return; }
-    try {
-      var sig = BBAudioStructure.signatureOf(samples, sampleRate);
-      renderLive(sig);
-    } catch (e) { out.textContent = String(e && e.message || e); }
+    try { renderLive(BBAudioStructure.signatureOf(samples, sampleRate)); }
+    catch (e) { out.textContent = String(e && e.message || e); }
   }
 
   function startCapture(kind) {
@@ -8111,11 +8099,7 @@ Rules:
         if (stopped) return;
         var chunk = e.inputBuffer.getChannelData(0);
         for (var i = 0; i < chunk.length; i++) buf.push(chunk[i]);
-        if (buf.length >= need) {
-          var samples = Float32Array.from(buf.slice(0, need));
-          buf = [];
-          process(samples, ctx.sampleRate);
-        }
+        if (buf.length >= need) { var samples = Float32Array.from(buf.slice(0, need)); buf = []; process(samples, ctx.sampleRate); }
       };
     }).catch(function (err) { out.textContent = String(err && err.message || err); });
   }
@@ -8126,8 +8110,7 @@ Rules:
     try { if (ctx) ctx.close(); } catch(e){}
     try { if (stream) stream.getTracks().forEach(function(t){t.stop();}); } catch(e){}
     ctx = source = proc = stream = null;
-    // on stop, show the full timeline: every saved window across the song
-    if (windows.length) {
+    if (windows.length && runCount) {
       var avg = { centroid: runSum.centroid/runCount, spread: runSum.spread/runCount, rolloff: runSum.rolloff/runCount };
       var L = [];
       L.push("FULL SONG \u2014 " + windows.length + " windows saved (" + (windows.length*3) + "s):");
@@ -8135,13 +8118,10 @@ Rules:
       L.push("");
       L.push("timeline (each window = 3s):");
       windows.forEach(function (w) {
-        var b = (w.modes.brightness||[]).join("/");
-        var tx = (w.modes.texture||[]).join("/");
-        var h = (w.modes.harmony||[]).join(",");
-        L.push("  " + String(w.t).padStart(4," ") + "s  " + (w.raw?w.raw.centroid+"Hz":"") + "  " + b + " / " + tx + "  [" + h + "]");
+        var b = (w.modes.brightness||[]).join("/"), tx = (w.modes.texture||[]).join("/"), h = (w.modes.harmony||[]).join(",");
+        L.push("  " + String(w.t) + "s  " + (w.raw?w.raw.centroid+"Hz":"") + "  " + b + " / " + tx + "  [" + h + "]");
       });
       out.textContent = L.join("\n");
-      // expose the full measurement for saving / further use
       try { window.__bbLastSongWindows = windows.slice(); } catch(e){}
     }
   }
