@@ -1456,20 +1456,30 @@
 
   const WON_DECAY_MS = 3 * 60 * 60 * 1000;   // a few hours
   const WON_PENALTY = 1.2;                   // demotion, not a ban
-  let wonAt = Object.create(null);
+  const WON_MAX_STREAK = 5;                  // escalation cap, so it fades, never bans
+  let wonAt = Object.create(null);           // text -> { when, streak }
 
   function noteWinner(text) {
     const k = String(text || "").slice(0, 120);
-    if (k) wonAt[k] = Date.now();
+    if (!k) return;
+    // A one-off win is a nudge. A passage that keeps winning builds a streak,
+    // so each repeat is demoted harder until something else gets a turn. A flat
+    // penalty let a dominant match (Berlioz on roughness) win, get nudged, and
+    // win again; the streak is what actually makes it step aside.
+    const prev = wonAt[k];
+    const streak = (prev && (Date.now() - prev.when) < WON_DECAY_MS)
+      ? Math.min(WON_MAX_STREAK, prev.streak + 1)
+      : 1;
+    wonAt[k] = { when: Date.now(), streak: streak };
   }
   function recencyPenalty(text) {
     const k = String(text || "").slice(0, 120);
-    const when = wonAt[k];
-    if (!when) return 0;
-    const age = Date.now() - when;
+    const rec = wonAt[k];
+    if (!rec) return 0;
+    const age = Date.now() - rec.when;
     if (age >= WON_DECAY_MS) { delete wonAt[k]; return 0; }
-    // Full penalty when just won, fading linearly to nothing.
-    return WON_PENALTY * (1 - age / WON_DECAY_MS);
+    // Full penalty scaled by the win streak, fading linearly to nothing.
+    return WON_PENALTY * rec.streak * (1 - age / WON_DECAY_MS);
   }
 
   /* THE CENTRE OF MORE THAN TWO.
