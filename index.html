@@ -4494,10 +4494,32 @@ Rules:
      network round trip per canvas; doing it for the first time when
      someone asks means the answer arrives two turns late. */
   let galleryWarmed = false;
-  function warmGallery() {
+  async function warmGallery() {
     if (galleryWarmed || typeof BBGallery === "undefined") return;
     galleryWarmed = true;
-    try { BBGallery.measureAll("oil painting landscape portrait 19th century", 20).catch(() => {}); } catch (e) {}
+    // One search was one kind of canvas, so the same landscape-portrait kept
+    // winning. Warm with many searches across styles, eras and subjects; the
+    // measured gallery accumulates, so the pool ends up varied and no single
+    // painting can keep crossing. Public-domain only, pulled live from Commons.
+    const warmSearches = [
+      "oil painting landscape 19th century",
+      "oil painting portrait 18th century",
+      "oil painting seascape storm ship",
+      "impressionist painting oil canvas",
+      "baroque painting oil canvas",
+      "romantic landscape painting oil",
+      "still life painting oil canvas",
+      "night scene painting oil canvas",
+      "oil painting figures interior",
+      "landscape painting mountains river",
+      "oil painting flowers garden",
+      "oil painting winter snow scene",
+      "history painting oil canvas",
+      "dutch golden age painting oil",
+    ];
+    for (let i = 0; i < warmSearches.length; i++) {
+      try { await BBGallery.measureAll(warmSearches[i], 10); } catch (e) {}
+    }
   }
   setTimeout(warmGallery, 12000);
   // The scanner runs for as long as the app is open.
