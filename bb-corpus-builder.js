@@ -73,8 +73,13 @@
   /* Three axes was the bar for "sensory". It is too low for "exceptional",
      which is what the far end has to be \u2014 it let a business column and a
      magazine piece through. Four, and denser. */
-  const MIN_AXES = 4;
-  const MIN_DENSITY = 0.08;    // sensory words as a share of the passage
+  // Standing rule (Dusty): no filter between the sources and the lens. A
+  // minimum-axis count and a density bar are exactly the pre-exclusion that
+  // rule forbids, so they no longer gate anything. Every passage that gets
+  // any sensory reading is kept; the lens floor does the sorting at query
+  // time, where weak material loses instead of being thrown out at harvest.
+  const MIN_AXES = 1;          // keep anything with ANY sensory reading
+  const MIN_DENSITY = 0;       // no density gate
 
   let kept = Object.create(null);   // text -> entry, deduped
   let seenPages = Object.create(null);
